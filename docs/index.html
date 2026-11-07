@@ -14,8 +14,28 @@
     function gtag(){dataLayer.push(arguments);}
     gtag('js', new Date());
   </script>
-  <!-- End Google Tag Manager -->
-</head>
+    <!-- End Google Tag Manager -->
+
+  <!-- Organization 结构化数据：帮助 AI 识别品牌主体 -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "Organization",
+        "@id": "https://samjoeyang.github.io/PDFStudio#organization",
+        "name": "PDF Studio",
+        "url": "https://samjoeyang.github.io/PDFStudio/",
+        "description": "PDF Studio 是一款本地优先、离线可用的开源桌面 PDF 工作台，支持合并重排、批注签名、水印、文字提取与 OCR、身份证排版、压缩优化，跨 macOS / Windows / Linux。",
+        "sameAs": [
+          "https://github.com/samjoeyang/PDFStudio",
+          "https://github.com/sponsors/samjoeyang"
+        ]
+      }
+    ]
+  }
+  </script>
+  </head>
 <body>
   <!-- Google Tag Manager (noscript) -->
   <noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-TJ9KFBFR" height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
@@ -32,6 +52,8 @@
         <a href="#download">下载</a>
         <a href="#discuss">讨论组</a>
         <a href="#sponsor">赞助</a>
+        <a href="faq.html">常见问题</a>
+        <a href="authentic.html">官方来源</a>
       </nav>
       <a class="nav-gh" href="https://github.com/samjoeyang/PDFStudio" target="_blank" rel="noopener">GitHub</a>
     </div>
@@ -252,6 +274,8 @@
     <div class="footer-links">
       <a href="https://github.com/samjoeyang/PDFStudio" target="_blank" rel="noopener">GitHub</a>
       <a href="https://github.com/samjoeyang/PDFStudio/releases" target="_blank" rel="noopener">Releases</a>
+      <a href="faq.html">常见问题</a>
+      <a href="authentic.html">官方来源</a>
       <a href="#top">回到顶部</a>
     </div>
     <div class="footer-copy">© <span id="year"></span> PDF Studio · 基于 Tauri + React 构建</div>

@@ -1,0 +1,35 @@
+[
+  {
+    "id": "cn-paragraph",
+    "file": "cn-paragraph.png",
+    "lang": "chi+eng",
+    "preprocess": "auto",
+    "psm": "block",
+    "ref": "cn-paragraph.ref.txt"
+  },
+  {
+    "id": "cn-en-mixed",
+    "file": "cn-en-mixed.png",
+    "lang": "chi+eng",
+    "preprocess": "auto",
+    "psm": "block",
+    "ref": "cn-en-mixed.ref.txt"
+  },
+  {
+    "id": "id-form",
+    "file": "id-form.png",
+    "lang": "chi+eng",
+    "preprocess": "auto",
+    "psm": "block",
+    "ref": "id-form.ref.txt"
+  },
+  {
+    "id": "doc-sample",
+    "file": "doc-sample.pdf",
+    "lang": "chi+eng",
+    "preprocess": "auto",
+    "psm": "block",
+    "dpi": 350,
+    "ref": "doc-sample.ref.txt"
+  }
+]

@@ -12,3 +12,6 @@ src-tauri/target
 # OS / editor
 .DS_Store
 *.log
+
+# Local agent workspace / personal memory (never commit)
+.workbuddy/

@@ -1,0 +1,46 @@
+{
+  "timestamp": "2026-11-07T12:22:08.522Z",
+  "overallCer": 0.03680981595092025,
+  "meanCer": 0.0367214511763403,
+  "meanCharAcc": 0.9632785488236597,
+  "totalRef": 326,
+  "totalEdits": 12,
+  "rows": [
+    {
+      "id": "cn-paragraph",
+      "cer": 0.04878048780487805,
+      "charAcc": 0.9512195121951219,
+      "conf": 0.84,
+      "prep": "none",
+      "up": 2,
+      "refLen": 82
+    },
+    {
+      "id": "cn-en-mixed",
+      "cer": 0.0136986301369863,
+      "charAcc": 0.9863013698630136,
+      "conf": 0.91,
+      "prep": "none",
+      "up": 2,
+      "refLen": 73
+    },
+    {
+      "id": "id-form",
+      "cer": 0.011235955056179775,
+      "charAcc": 0.9887640449438202,
+      "conf": 0.89,
+      "prep": "none",
+      "up": 2,
+      "refLen": 89
+    },
+    {
+      "id": "doc-sample",
+      "cer": 0.07317073170731707,
+      "charAcc": 0.926829268292683,
+      "conf": 0.82,
+      "prep": "gray",
+      "up": 1,
+      "refLen": 82
+    }
+  ]
+}
