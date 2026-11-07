@@ -1,11 +1,17 @@
 name: Publish Site
 
 # 触发方式:
-#   1) 新版本 Release 发布 (published) 后，自动更新官网下载入口
+#   1) Build & Release 工作流成功完成后（workflow_run 事件，对 GITHUB_TOKEN 也能可靠派发）
+#      —— 这是发版后自动更新官网下载入口的主路径
 #   2) 手动 Run workflow，可指定 tag（不填则用最新 Release）
+#
+# 注意：用 GITHUB_TOKEN 由工作流创建的 Release 不会派发 release:published 事件，
+#       且由工作流推送的 commit 不会触发 push 事件，因此这里改用 workflow_run 触发，
+#       并在本工作流内直接用 peaceiris 部署 gh-pages，避免跨工作流事件失效。
 on:
-  release:
-    types: [published]
+  workflow_run:
+    workflows: ["Build & Release"]
+    types: [completed]
   workflow_dispatch:
     inputs:
       tag:
@@ -18,11 +24,18 @@ permissions:
 
 jobs:
   publish:
+    # 上游 Build & Release 失败时不更新官网
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 配置 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
 
       - name: 计算目标 tag
         id: ver
@@ -30,7 +43,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          T="${{ github.event.release.tag_name || github.event.inputs.tag }}"
+          T="${{ github.event.inputs.tag }}"
           if [ -z "$T" ]; then
             T=$(gh release list --limit 1 --json tagName --jq '.[0].tagName')
           fi
@@ -43,7 +56,7 @@ jobs:
           GITHUB_REPOSITORY: ${{ github.repository }}
         run: node scripts/gen-latest.mjs "${{ steps.ver.outputs.tag }}"
 
-      - name: 提交 latest.json
+      - name: 提交 latest.json 到 main
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -55,11 +68,18 @@ jobs:
             git push
           fi
 
+      - name: 部署官网到 gh-pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./docs
+          publish_branch: gh-pages
+          enable_jekyll: false
+
       # 确保 GitHub Pages 以 gh-pages 分支（根目录）为源（幂等，失败不影响主流程）
       - name: 确保 GitHub Pages 已开启
         continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh api --method PUT /repos/${{ github.repository }}/pages \
-            -f source=gh-pages || true
+          gh api --method PUT /repos/${{ github.repository }}/pages -f source=gh-pages || true
