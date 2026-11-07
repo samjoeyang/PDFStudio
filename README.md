@@ -104,7 +104,12 @@ git tag v0.1.0 && git push origin v0.1.0
 项目官网基于 GitHub Pages，源码即本仓库 `docs/` 目录：
 👉 **https://samjoeyang.github.io/PDFStudio/**
 
-包含软件介绍、安装使用、下载地址、讨论组与赞助入口。启用方式：仓库 **Settings → Pages → Source** 选择 `main` 分支的 `/docs` 目录（发布工作流也会尝试自动开启）。
+包含软件介绍、安装使用、下载地址、讨论组与赞助入口。官网内容由 `docs/` 目录构建并自动发布到独立的 `gh-pages` 分支（根目录）托管，无需手动配置：
+
+- **`.github/workflows/deploy.yml`** —— 推送 `main` 且 `docs/` 有改动时，自动把 `docs/` 内容部署到 `gh-pages` 分支（GitHub Pages 源已设为 `gh-pages`）。
+- 发布新版本后，`publish-site.yml` 会更新 `docs/latest.json` 并推回 `main`，随即触发本工作流刷新官网下载入口。
+
+如需手动重部署官网：`Actions → Deploy Site → Run workflow`。
 
 ---
 

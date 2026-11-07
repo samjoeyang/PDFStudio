@@ -1,0 +1,40 @@
+name: Deploy Site
+
+# 将 docs/ 下的官网内容发布到 gh-pages 分支，供 GitHub Pages 托管（根目录）。
+# 触发:
+#   - 推送 main 且 docs/ 有改动（含发布新版本时 publish-site 更新 latest.json）
+#   - 修改本工作流文件本身
+#   - 手动 Run workflow
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docs/**'
+      - '.github/workflows/deploy.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write   # 需要写权限以推送到 gh-pages 分支
+
+concurrency:
+  group: pages-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 发布 docs/ -> gh-pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./docs
+          publish_branch: gh-pages
+          enable_jekyll: false   # 写入 .nojekyll，禁用 Jekyll
+          user_name: github-actions[bot]
+          user_email: github-actions[bot]@users.noreply.github.com
+          commit_message: "site: deploy docs -> gh-pages"
