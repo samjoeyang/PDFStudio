@@ -137,10 +137,19 @@ a:hover { text-decoration: underline; }
 /* Download */
 .dl-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; }
 .dl-card {
+  position: relative;
   border: 1px solid var(--border); border-radius: var(--radius); padding: 20px;
   background: var(--bg); box-shadow: var(--shadow); display: flex; flex-direction: column; gap: 6px;
 }
 .dl-card.is-recommended { border-color: var(--brand); box-shadow: 0 10px 30px rgba(79,70,229,0.18); }
+.dl-badge {
+  display: none;
+  position: absolute; top: -11px; right: 14px;
+  background: var(--brand); color: #fff; font-size: 12px; font-weight: 700;
+  padding: 3px 11px; border-radius: 999px; box-shadow: var(--shadow);
+}
+.dl-card.is-recommended .dl-badge { display: inline-block; }
+.dl-hint { text-align: center; color: var(--brand-dark); font-size: 14px; font-weight: 600; margin: -12px 0 24px; }
 .dl-os { font-weight: 700; font-size: 15px; }
 .dl-meta { color: var(--fg-soft); font-size: 13px; margin-bottom: 8px; }
 .dl-btn {
@@ -165,6 +174,13 @@ a:hover { text-decoration: underline; }
 .link-card strong { display: block; }
 .link-card span { color: var(--fg-soft); font-size: 13px; }
 .sponsor-note { text-align: center; color: var(--fg-soft); font-size: 13px; margin-top: 22px; }
+.sponsor-qr { display: flex; gap: 30px; justify-content: center; flex-wrap: wrap; margin-top: 26px; }
+.sponsor-qr figure { margin: 0; text-align: center; }
+.sponsor-qr img {
+  width: 180px; height: 180px; border-radius: 12px; border: 1px solid var(--border);
+  background: #fff; padding: 8px; box-shadow: var(--shadow); display: block;
+}
+.sponsor-qr figcaption { margin-top: 10px; color: var(--fg-soft); font-size: 14px; font-weight: 600; }
 
 /* Footer */
 .footer {
