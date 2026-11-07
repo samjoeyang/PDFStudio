@@ -32,7 +32,7 @@
       {
         "ext": ["pdf"],
         "name": "PDF Document",
-        "description": "PDF 文档",
+        "description": "PDF Document",
         "mimeType": "application/pdf"
       }
     ]
