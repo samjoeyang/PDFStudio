@@ -7,7 +7,9 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "eval:ocr": "node scripts/eval-ocr/run.mjs",
+    "eval:ocr:gen": "python3 scripts/eval-ocr/gen-samples.py"
   },
   "dependencies": {
     "@pdf-lib/fontkit": "^1.1.1",
