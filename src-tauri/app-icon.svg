@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#4F46E5"/>
+      <stop offset="55%" stop-color="#7C3AED"/>
+      <stop offset="100%" stop-color="#9333EA"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background squircle -->
+  <rect x="0" y="0" width="1024" height="1024" rx="224" ry="224" fill="url(#bg)"/>
+
+  <!-- Soft inner glow -->
+  <rect x="40" y="40" width="944" height="944" rx="196" ry="196" fill="#ffffff" opacity="0.06"/>
+
+  <!-- Document -->
+  <path d="M232 182 H720 L792 254 V842 H232 Z" fill="#FFFFFF"/>
+  <path d="M720 182 L792 254 L720 254 Z" fill="#E2E6EC"/>
+
+  <!-- PDF wordmark -->
+  <text x="512" y="392" font-family="Helvetica, Arial, sans-serif" font-size="232"
+        font-weight="800" fill="#312E81" text-anchor="middle" dominant-baseline="central">PDF</text>
+  <!-- underline accent -->
+  <rect x="356" y="470" width="312" height="18" rx="9" fill="#F59E0B"/>
+
+  <!-- Pen (diagonal, tip toward lower-left) -->
+  <g transform="rotate(-34 512 640)">
+    <!-- barrel -->
+    <rect x="360" y="615" width="300" height="52" rx="26" fill="#1F2937"/>
+    <!-- amber grip band -->
+    <rect x="430" y="615" width="42" height="52" fill="#F59E0B"/>
+    <!-- cap end (right) -->
+    <rect x="642" y="615" width="42" height="52" rx="21" fill="#374151"/>
+    <!-- nib cone (left) -->
+    <polygon points="360,615 360,667 268,641" fill="#CBD5E1"/>
+    <polygon points="268,641 281,632 281,650" fill="#475569"/>
+  </g>
+</svg>

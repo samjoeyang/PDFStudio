@@ -1,0 +1,9 @@
+/** 身份证 A4 排版共用的物理尺寸常量（PDF 用 pt，1 mm = 72 / 25.4 pt） */
+export const MM = 72 / 25.4;
+export const A4_W = 210 * MM;               // 595.2756 pt
+export const A4_H = 297 * MM;               // 841.8898 pt
+export const CARD_W = 85.6 * MM;            // 242.6457 pt，二代身份证
+export const CARD_H = 54 * MM;              // 153.0709 pt
+export const CARD_RATIO = CARD_W / CARD_H;  // 1.5852
+export const CARD_PX_W = 856;               // 归一化画布 10 px/mm ≈ 254 dpi
+export const CARD_PX_H = 540;
