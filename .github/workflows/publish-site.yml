@@ -1,0 +1,65 @@
+name: Publish Site
+
+# 触发方式:
+#   1) 新版本 Release 发布 (published) 后，自动更新官网下载入口
+#   2) 手动 Run workflow，可指定 tag（不填则用最新 Release）
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: '要发布的 Release tag（例如 v0.1.0，留空取最新）'
+        required: false
+
+permissions:
+  contents: write
+  pages: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 计算目标 tag
+        id: ver
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          T="${{ github.event.release.tag_name || github.event.inputs.tag }}"
+          if [ -z "$T" ]; then
+            T=$(gh release list --limit 1 --json tagName --jq '.[0].tagName')
+          fi
+          echo "tag=$T" >> "$GITHUB_OUTPUT"
+          echo "目标版本: $T"
+
+      - name: 生成 docs/latest.json
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: node scripts/gen-latest.mjs "${{ steps.ver.outputs.tag }}"
+
+      - name: 提交 latest.json
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add docs/latest.json
+          if git diff --cached --quiet; then
+            echo "latest.json 无变化，跳过提交"
+          else
+            git commit -m "site: 更新 latest.json -> ${{ steps.ver.outputs.tag }}"
+            git push
+          fi
+
+      # 确保 GitHub Pages 以 main 分支的 /docs 目录为源（幂等，失败不影响主流程）
+      - name: 确保 GitHub Pages 已开启
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh api --method PUT /repos/${{ github.repository }}/pages \
+            -f source='{"branch":"main","path":"/docs"}' || true

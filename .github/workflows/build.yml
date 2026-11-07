@@ -1,0 +1,134 @@
+name: Build & Release
+
+# 触发方式:
+#   1) 推送 tag（如 v0.1.0）自动构建并发布
+#   2) 手动在 Actions 页面点击 Run workflow，填入版本号
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: '发布版本号（例如 0.1.0）'
+        required: true
+        default: '0.1.0'
+
+permissions:
+  contents: write
+
+jobs:
+  # 统一计算版本号与 tag，供后续任务复用
+  meta:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      tag: ${{ steps.v.outputs.tag }}
+    steps:
+      - id: v
+        shell: bash
+        run: |
+          V="${{ github.event.inputs.version || github.ref_name }}"
+          V="${V#v}"                       # 去掉可能的 v 前缀
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+          echo "tag=v$V" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: meta
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macos-apple
+            platform: macos-latest
+            target: aarch64-apple-darwin     # Apple 芯片 (M1/M2/M3…)
+            bundles: dmg
+          - name: macos-intel
+            platform: macos-latest
+            target: x86_64-apple-darwin       # Intel 芯片
+            bundles: dmg
+          - name: windows-x64
+            platform: windows-latest
+            target: x86_64-pc-windows-msvc    # Windows 64 位
+            bundles: nsis,msi
+          - name: windows-x86
+            platform: windows-latest
+            target: i686-pc-windows-msvc      # Windows 32 位
+            bundles: nsis,msi
+          - name: linux
+            platform: ubuntu-latest
+            target: x86_64-unknown-linux-gnu  # Linux 64 位
+            bundles: appimage,deb
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 配置 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: 配置 Rust 工具链
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: 缓存 Rust 依赖
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: 安装 Linux 系统依赖
+        if: matrix.platform == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev \
+            libgtk-3-dev libssl-dev libsoup-3.0-dev patchelf \
+            build-essential curl wget file
+
+      - name: 安装前端依赖
+        run: npm ci
+
+      - name: 写入版本号
+        shell: bash
+        run: node scripts/set-version.mjs "${{ needs.meta.outputs.version }}"
+
+      - name: 构建安装包 (Tauri)
+        run: npm run tauri build -- --target ${{ matrix.target }} --bundles ${{ matrix.bundles }}
+
+      - name: 重命名产物
+        shell: bash
+        run: node scripts/rename-assets.mjs "${{ matrix.target }}" "${{ needs.meta.outputs.version }}"
+
+      - name: 上传产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: pdfstudio-${{ matrix.name }}
+          path: upload/*
+          if-no-files-found: error
+
+  release:
+    needs: [meta, build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 下载全部产物
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: 创建 GitHub Release 并上传资产
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.meta.outputs.tag }}
+          name: PDF Studio v${{ needs.meta.outputs.version }}
+          files: dist/**/*
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
