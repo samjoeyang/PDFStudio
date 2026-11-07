@@ -5,6 +5,7 @@ import fontkit from '@pdf-lib/fontkit';
 import { loadPdfJsDoc, renderPageToCanvas } from './thumb';
 import { processCanvas, normalizeOcrText } from './preprocess';
 import type { PreprocessMode } from './preprocess';
+import { correctOcrText } from './ocr-correct';
 import { layoutText } from './ocr-layout';
 import type { OcrResult } from './types';
 
@@ -174,7 +175,7 @@ export async function recognizePages(
       }
       out.push({
         pageNumber: n,
-        text: normalizeOcrText(raw),
+        text: correctOcrText(normalizeOcrText(raw)),
         confidence: data.confidence ?? 0,
         source: 'ocr',
         columns,

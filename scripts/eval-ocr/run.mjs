@@ -38,9 +38,15 @@ const PSM_MAP = {
   sparse: PSM.SPARSE_TEXT,
 };
 
-// ---- 编译项目里的 preprocess.ts，保持与线上一致 ----
+// ---- 编译项目里的 preprocess.ts / ocr-correct.ts，保持与线上一致 ----
 async function loadPreprocess() {
   const src = readFileSync(path.join(REPO, "src", "lib", "preprocess.ts"), "utf8");
+  const { code } = await transform(src, { loader: "ts", format: "esm" });
+  return import("data:text/javascript;base64," + Buffer.from(code).toString("base64"));
+}
+
+async function loadCorrect() {
+  const src = readFileSync(path.join(REPO, "src", "lib", "ocr-correct.ts"), "utf8");
   const { code } = await transform(src, { loader: "ts", format: "esm" });
   return import("data:text/javascript;base64," + Buffer.from(code).toString("base64"));
 }
@@ -149,6 +155,7 @@ function readReference(ref) {
 
 async function main() {
   const prep = await loadPreprocess();
+  const correct = await loadCorrect();
   const manifestPath = path.join(SAMPLES_DIR, "manifest.json");
   let manifest;
   try {
@@ -168,21 +175,26 @@ async function main() {
     try {
       const img = await loadImageData(file, s.dpi || DEFAULT_DPI);
       const { text, confidence, applied, stats } = await recognize(img, s, prep);
+      const corrected = correct.correctOcrText(text);
       const ref = readReference(s.ref);
       const r = cer(ref, text);
-      totalEdits += r.edits;
+      const r2 = cer(ref, corrected);
+      totalEdits += r2.edits;
       totalRef += r.refLen;
       rows.push({
         id: s.id,
-        cer: r.cer,
-        charAcc: r.charAcc,
+        cer: r2.cer,
+        charAcc: r2.charAcc,
+        cerBefore: r.cer,
+        charAccBefore: r.charAcc,
         conf: confidence / 100,
         prep: applied,
         up: stats.upscale,
         refLen: r.refLen,
       });
+      const d = ((r.cer - r2.cer) * 100).toFixed(2);
       console.log(
-        `CER=${(r.cer * 100).toFixed(2)}%  字符准确率=${(r.charAcc * 100).toFixed(2)}%  置信=${confidence.toFixed(0)}%  [${applied}${stats.upscale > 1 ? ` ${stats.upscale}x` : ""}]`,
+        `CER=${(r2.cer * 100).toFixed(2)}%（纠错前 ${(r.cer * 100).toFixed(2)}%，Δ${r2.cer < r.cer ? "-" : "+"}${d}pp）  置信=${confidence.toFixed(0)}%  [${applied}${stats.upscale > 1 ? ` ${stats.upscale}x` : ""}]`,
       );
     } catch (e) {
       console.log(`失败：${e.message}`);
@@ -200,16 +212,19 @@ async function main() {
     ? valid.reduce((a, r) => a + r.charAcc, 0) / valid.length
     : NaN;
 
-  console.log("\n" + "=".repeat(60));
-  console.log("基线评测汇总");
-  console.log("=".repeat(60));
+  console.log("\n" + "=".repeat(70));
+  console.log("基线评测汇总（含后纠错，CER 越低越好）");
+  console.log("=".repeat(70));
   const fmtPct = (x) => (Number.isNaN(x) ? "-" : (x * 100).toFixed(2) + "%");
   console.log(
-    `${"样本".padEnd(14)}${"CER".padStart(10)}${"字符准确率".padStart(12)}${"置信度".padStart(10)}`,
+    `${"样本".padEnd(14)}${"CER(前→后)".padStart(20)}${"准确率(后)".padStart(12)}${"置信度".padStart(10)}`,
   );
   for (const r of rows) {
+    const beforeAfter = Number.isNaN(r.cerBefore)
+      ? "-"
+      : `${(r.cerBefore * 100).toFixed(2)}% → ${(r.cer * 100).toFixed(2)}%`;
     console.log(
-      `${r.id.padEnd(14)}${fmtPct(r.cer).padStart(10)}${fmtPct(r.charAcc).padStart(12)}${fmtPct(r.conf).padStart(10)}`,
+      `${r.id.padEnd(14)}${beforeAfter.padStart(20)}${fmtPct(r.charAcc).padStart(12)}${fmtPct(r.conf).padStart(10)}`,
     );
   }
   console.log("-".repeat(60));

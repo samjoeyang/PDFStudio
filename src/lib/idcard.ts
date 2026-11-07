@@ -3,6 +3,7 @@ import type { PDFFont } from 'pdf-lib';
 import fontkit from '@pdf-lib/fontkit';
 import { getWorker } from './ocr';
 import { processCanvas, normalizeOcrText } from './preprocess';
+import { correctOcrText } from './ocr-correct';
 import { PSM } from 'tesseract.js';
 import { MM, A4_W, A4_H, CARD_W, CARD_H, CARD_PX_W, CARD_PX_H } from './idcard-const';
 import {
@@ -244,7 +245,7 @@ export async function detectSideByOcr(card: IdCardSource): Promise<OcrGuess> {
   const { canvas } = processCanvas(renderCardCanvas(card), 'auto',
     { upscale: 2, deskew: false });
   const { data } = await worker.recognize(canvas.toDataURL('image/png'));
-  const text = normalizeOcrText((data.text ?? '').trim());
+  const text = correctOcrText(normalizeOcrText((data.text ?? '').trim()));
   const guess = scoreSide(text);
   if (guess.side !== 'unknown' && guess.confidence >= 3) {
     return { ...guess, text, upsideDown: false };
@@ -260,7 +261,7 @@ export async function detectSideByOcr(card: IdCardSource): Promise<OcrGuess> {
     ctx.rotate(Math.PI);
     ctx.drawImage(canvas, 0, 0);
     const r2 = await worker.recognize(flipped.toDataURL('image/png'));
-    const t2 = normalizeOcrText((r2.data.text ?? '').trim());
+    const t2 = correctOcrText(normalizeOcrText((r2.data.text ?? '').trim()));
     const g2 = scoreSide(t2);
     if (g2.confidence > guess.confidence) return { ...g2, text: t2, upsideDown: true };
   }
