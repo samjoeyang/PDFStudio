@@ -18,25 +18,54 @@
     if (el) el.textContent = text;
   }
 
+  // 平台中文标签（用于“已根据你的系统”提示）
+  var PLAT_LABEL = {
+    'macos-apple': 'Apple 芯片 macOS',
+    'macos-intel': 'Intel 芯片 macOS',
+    'windows-x64': 'Windows 64 位',
+    'windows-x86': 'Windows 32 位',
+    'linux': 'Linux 64 位'
+  };
+
+  // 同步基础识别（基于 UA / platform）
   function detectPlatform() {
-    var ua = navigator.userAgent;
-    var plat = navigator.platform || '';
-    var apple = /Mac|iPhone|iPad/.test(plat) ||
-      (/Macintosh/.test(ua) && !/Windows/.test(ua));
-    if (apple) {
-      // Apple Silicon 检测器：navigator.userAgentData 或架构线索
-      var arm = (navigator.userAgentData && navigator.userAgentData.getHighEntropyValues) ||
-        /aarch64|arm64/i.test(ua) || (window.screen && window.devicePixelRatio >= 2 && /Mac/.test(plat) && false);
-      // 保守策略：Mac 默认推荐 Apple 芯片，Intel Mac 用户可手动切换
-      return 'macos-apple';
+    var ua = navigator.userAgent || '';
+    var uaPlatform = (navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || '';
+    if (/Mac|iPhone|iPad/.test(uaPlatform) || (/Macintosh/.test(ua) && !/Windows/.test(ua))) {
+      return 'macos-apple'; // 默认推荐 Apple 芯片；Intel Mac 用户可手动选择
     }
-    if (/Win/.test(ua)) {
-      // 32 位系统通常不含 "Win64" / "x64"
+    if (/Win/.test(uaPlatform) || /Win/.test(ua)) {
       var is64 = /x64|Win64|WOW64/.test(ua);
       return is64 ? 'windows-x64' : 'windows-x86';
     }
-    if (/Linux/.test(ua)) return 'linux';
+    if (/Linux/.test(uaPlatform) || /Linux/.test(ua)) return 'linux';
     return null;
+  }
+
+  // 标记推荐卡片 + 设置系统提示文案
+  function applyRecommendation(plat) {
+    document.querySelectorAll('.dl-card').forEach(function (card) {
+      card.classList.toggle('is-recommended', card.getAttribute('data-plat') === plat);
+    });
+    var hint = document.getElementById('dl-hint');
+    if (hint) {
+      hint.textContent = plat ? '已根据你的系统（' + (PLAT_LABEL[plat] || '') + '）为你推荐 ↓' : '';
+    }
+  }
+
+  // 用 Client Hints 异步精修芯片/位数（支持的浏览器更准确）
+  function refinePlatform(plat) {
+    var uad = navigator.userAgentData;
+    if (!uad || !uad.getHighEntropyValues) return;
+    try {
+      uad.getHighEntropyValues(['architecture', 'bitness']).then(function (v) {
+        var next = plat;
+        if (plat === 'macos-apple' && v.architecture === 'x86') next = 'macos-intel';
+        if (plat === 'windows-x64' && v.bitness === '32') next = 'windows-x86';
+        if (plat === 'windows-x86' && v.bitness === '64') next = 'windows-x64';
+        if (next !== plat) applyRecommendation(next);
+      }).catch(function () {});
+    } catch (e) { /* 不支持则保持基础识别结果 */ }
   }
 
   function render(data) {
@@ -81,8 +110,10 @@
         alt.removeAttribute('href');
         alt.textContent = '';
       }
-      if (plat === recommended) card.classList.add('is-recommended');
     });
+
+    applyRecommendation(recommended);
+    refinePlatform(recommended);
 
     if (!hasAny) showFallback();
   }
