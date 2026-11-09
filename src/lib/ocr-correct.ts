@@ -54,6 +54,25 @@ const WORD_FIXES: Record<string, string> = {
   拾别: '识别',
   视别: '识别',
   清職: '清楚',
+  // —— 以下来自降质样本与真实证件照片的实测混淆（均为不成词错拼） ——
+  // 桌 → 果 / 着 / 泉（宋体「桌」在噪声下的三种典型误识）
+  果面: '桌面',
+  着面: '桌面',
+  泉面: '桌面',
+  // 台 → 合（「工作台」→「工作合」）
+  工作合: '工作台',
+  // 批 → 吉、印 → 县（「批注」「水印」）
+  吉注: '批注',
+  水县: '水印',
+  // 离线 → 高乒、上传 → 上特
+  高乒: '离线',
+  上特: '上传',
+  // 身 → 喘、器 → 恬（「身份证」「服务器」）
+  喘份证: '身份证',
+  喘份: '身份',
+  服务恬: '服务器',
+  // 它支 → 已文（跨行干扰导致的整词错识）
+  已文持: '它支持',
 };
 
 /** 上下文规则：「己」只有出现在完成类动词前才是「已」 */
@@ -64,6 +83,10 @@ const CONTEXT_RULES: Array<{ re: RegExp; to: string }> = [
     to: '已',
   },
   { re: /末(?=来|必|能|曾|经|成年)/g, to: '未' },
+  // 字 → 子（仅限「文?提取/文?识别」等明确语境，避免误伤《文子》等专名）
+  { re: /(?<=文)子(?=提取|识别|处理|流)/g, to: '字' },
+  // 都 → 格（「处理格在」绝不成文）
+  { re: /格(?=在本机|在本地|在页面)/g, to: '都' },
   // 括号类：中文语境中的半角引号成对替换
   { re: /([\u4e00-\u9fff（）《》「」])"(?=[\u4e00-\u9fff])/g, to: '$1“' },
   { re: /(?<=[\u4e00-\u9fff])"([\u4e00-\u9fff（）《》，。；：、？！]|$)/g, to: '”$1' },
@@ -88,6 +111,24 @@ const VARIANT_CHARS: Record<string, string> = {
   眞: '真',
   曽: '曾',
 };
+
+/**
+ * 过滤 OCR 乱码行（仅中文语境使用）。
+ * 纹理背景（木纹、布纹）经二值化后会产生大量「AN / NA / NN」式伪词行，
+ * 特征：行内 \ N A W R S 字母占比极高且几乎无汉字数字。
+ * 规则保守：只在 junk 占比 > 0.6 时丢弃，正常中英文内容不受影响。
+ */
+export function filterNoiseLines(text: string): string {
+  return text
+    .split(/\n+/)
+    .filter((line) => {
+      const t = line.replace(/\s/g, '');
+      if (!t) return false;
+      const junk = (t.match(/[\\NAWRNS]/g) ?? []).length / t.length;
+      return junk < 0.6;
+    })
+    .join('\n');
+}
 
 /** 单条纠错是否命中（用于统计与调试） */
 export function listCorrections(text: string): Array<{ from: string; to: string }> {
@@ -127,7 +168,10 @@ export function correctOcrText(text: string): string {
   // 3. 字母数字混淆
   out = fixAlnumConfusion(out);
 
-  // 4. 异体字归一
+  // 4. 货币符号统一：中文语境的半角 ¥ 一律视为人民币全角 ￥，并去掉其后空格
+  out = out.replace(/¥\s*/g, '￥');
+
+  // 5. 异体字归一
   for (const [from, to] of Object.entries(VARIANT_CHARS)) {
     if (out.includes(from)) out = out.split(from).join(to);
   }

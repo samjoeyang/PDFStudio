@@ -16,6 +16,92 @@
     "ref": "cn-en-mixed.ref.txt"
   },
   {
+    "id": "cn-noisy",
+    "file": "cn-noisy.png",
+    "lang": "chi+eng",
+    "preprocess": "auto",
+    "psm": "block",
+    "ref": "cn-noisy.ref.txt"
+  },
+  {
+    "id": "id-number",
+    "file": "id-number.png",
+    "lang": "eng",
+    "preprocess": "auto",
+    "psm": "line",
+    "ref": "id-number.ref.txt"
+  },
+  {
+    "id": "id-number-wl",
+    "file": "id-number.png",
+    "lang": "eng",
+    "preprocess": "auto",
+    "psm": "line",
+    "whitelist": "0123456789X",
+    "ref": "id-number.ref.txt"
+  },
+  {
+    "id": "id-number-noisy",
+    "file": "id-number-noisy.png",
+    "lang": "eng",
+    "preprocess": "auto",
+    "psm": "line",
+    "ref": "id-number-noisy.ref.txt"
+  },
+  {
+    "id": "id-number-noisy-wl",
+    "file": "id-number-noisy.png",
+    "lang": "eng",
+    "preprocess": "auto",
+    "psm": "line",
+    "whitelist": "0123456789X",
+    "ref": "id-number-noisy.ref.txt"
+  },
+  {
+    "id": "id-number-hard",
+    "file": "id-number-hard.png",
+    "lang": "eng",
+    "preprocess": "auto",
+    "psm": "line",
+    "ref": "id-number-hard.ref.txt"
+  },
+  {
+    "id": "id-number-hard-wl",
+    "file": "id-number-hard.png",
+    "lang": "eng",
+    "preprocess": "auto",
+    "psm": "line",
+    "whitelist": "0123456789X",
+    "ref": "id-number-hard.ref.txt"
+  },
+  {
+    "id": "real-merged",
+    "file": "real-merged.jpg",
+    "lang": "chi+eng",
+    "preprocess": "auto",
+    "psm": "column",
+    "ref": "real-merged.ref.txt",
+    "detect": "card"
+  },
+  {
+    "id": "real-licailan",
+    "file": "real-licailan.jpg",
+    "lang": "chi+eng",
+    "preprocess": "auto",
+    "psm": "column",
+    "ref": "real-licailan.ref.txt",
+    "detect": "card"
+  },
+  {
+    "id": "real-yangxiling",
+    "file": "real-yangxiling.jpg",
+    "lang": "chi+eng",
+    "preprocess": "auto",
+    "psm": "column",
+    "ref": "real-yangxiling.ref.txt",
+    "detect": "card"
+  },
+  {
     "id": "id-form",
     "file": "id-form.png",
     "lang": "chi+eng",

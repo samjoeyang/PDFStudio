@@ -1,0 +1,23 @@
+{
+  "note": "三张真实身份证照片在自适应多候选策略下的 CER 基线：auto 启发式 + 补跑未命中的预处理路线 + 证件定位裁剪作为额外候选 + 整页大图不再插值放大。CER 按参考字符数加权。",
+  "samples": 3,
+  "totalRef": 260,
+  "totalEdits": 32,
+  "overallCer": 0.1231,
+  "charAccuracy": 0.8769,
+  "rows": [
+    { "id": "real-merged", "cer": 0.0348, "refLen": 115, "edits": 4, "note": "自适应选中 full/binary/1x（上一版 31.30%；网格实验的理论最优同为 3.48%）" },
+    { "id": "real-licailan", "cer": 0.169, "refLen": 71, "edits": 12, "note": "整图 auto→binary/1x，避开有害的证件裁剪（上一版 36.62%）" },
+    { "id": "real-yangxiling", "cer": 0.2162, "refLen": 74, "edits": 16, "note": "选中裁剪图候选 + 乱码行过滤 -29.73pp（上一版 21.62%，持平）" }
+  ],
+  "reference": {
+    "previousOverallCer": 0.3,
+    "previousEdits": 78,
+    "mergedBeforeCropFixCer": 0.7304,
+    "synthetic11OverallCer": 0.0194,
+    "synthetic11TotalRef": 516,
+    "synthetic11TotalEdits": 10,
+    "full14OverallCer": 0.0541
+  },
+  "source": "run.mjs 全量 14 样本回归（2026-11-08）+ run.mjs --only '^real-'"
+}

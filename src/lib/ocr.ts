@@ -5,7 +5,8 @@ import fontkit from '@pdf-lib/fontkit';
 import { loadPdfJsDoc, renderPageToCanvas } from './thumb';
 import { processCanvas, normalizeOcrText } from './preprocess';
 import type { PreprocessMode } from './preprocess';
-import { correctOcrText } from './ocr-correct';
+import { correctOcrText, filterNoiseLines } from './ocr-correct';
+import { pickBestCandidate } from './ocr-adaptive';
 import { layoutText } from './ocr-layout';
 import type { OcrResult } from './types';
 
@@ -23,6 +24,17 @@ export interface OcrSettings {
   lang: OcrLang;
   /** 多栏文档按坐标还原阅读顺序 */
   layout: boolean;
+  /**
+   * 自动比对多种预处理路线并按质量选优（默认开启）。
+   * 真实照片的最优预处理因图而异，关闭可让多页识别快约 2 倍，但准确率会回退。
+   */
+  adaptive?: boolean;
+  /**
+   * 字符白名单：限制引擎只输出这些字符（如证件号 '0123456789X'、金额 '0123456789.￥'）。
+   * 注意：LSTM 引擎对白名单的支持不完整（可能只过滤输出），关键场景请配合
+   * 字段级二次识别与格式校验使用，不要单独依赖。
+   */
+  whitelist?: string;
 }
 
 export const DEFAULT_OCR_SETTINGS: OcrSettings = {
@@ -31,6 +43,7 @@ export const DEFAULT_OCR_SETTINGS: OcrSettings = {
   psm: 'block',
   lang: 'chi+eng',
   layout: true,
+  adaptive: true,
 };
 
 const LANGS: Record<OcrLang, string[]> = {
@@ -153,29 +166,67 @@ export async function recognizePages(
       const area = Math.max(1, natural.width * natural.height);
       const scale = Math.min(settings.dpi / 72, Math.sqrt(MAX_CANVAS_AREA / area));
       const canvas = await renderPageToCanvas(doc, n, scale);
-      // 预处理器会在源图偏小时自动 2× 放大，让小字达到引擎需要的字高
-      const { canvas: proc, result: prep } = processCanvas(canvas, settings.preprocess);
-      onProgress?.(i, pageNumbers.length,
-        `正在识别第 ${n} 页${prep.applied !== 'none' ? `（${prep.applied === 'binary' ? '二值化' : '增强'}）` : ''}`);
 
-      await worker.setParameters({
+      const setParams = () => worker.setParameters({
         tessedit_pageseg_mode: PSM[settings.psm],
         preserve_interword_spaces: '1',
         user_defined_dpi: String(Math.round(scale * 72)),
+        // 显式设空串以清除上一次设置的白名单（worker 参数会跨调用保留）
+        tessedit_char_whitelist: settings.whitelist ?? '',
       });
-      const { data } = await worker.recognize(proc.toDataURL('image/png'), {},
-        { blocks: true, text: true, hocr: false, tsv: false });
 
-      const words = wordsFromResult(data);
-      let raw = data.text ?? '';
-      let columns = 1;
-      if (settings.layout && words.length) {
-        const lay = layoutText(words, proc.width);
-        if (lay.columns > 1) { raw = lay.text; columns = lay.columns; }
+      // 单条候选：预处理 → 识别 → 版面重排 → 后纠错，产出用于打分的最终文本
+      const makePass = async (mode: PreprocessMode, label: string) => {
+        const { canvas: proc, result: prep } = processCanvas(canvas, mode);
+        await setParams();
+        const { data } = await worker.recognize(proc.toDataURL('image/png'), {},
+          { blocks: true, text: true, hocr: false, tsv: false });
+        const words = wordsFromResult(data);
+        let raw = data.text ?? '';
+        let columns = 1;
+        if (settings.layout && words.length) {
+          const lay = layoutText(words, proc.width);
+          if (lay.columns > 1) { raw = lay.text; columns = lay.columns; }
+        }
+        // 中文语境过滤纹理背景产生的「AN/NA」乱码行；纯英文不启用以免误删
+        const text = settings.lang !== 'eng'
+          ? filterNoiseLines(correctOcrText(normalizeOcrText(raw)))
+          : correctOcrText(normalizeOcrText(raw));
+        return {
+          data, proc, prep, words, columns, text,
+          key: `${label}/${prep.stats.upscale}x→${prep.applied}`,
+        };
+      };
+
+      onProgress?.(i, pageNumbers.length, `正在识别第 ${n} 页（自适应增强）`);
+      // 首条候选永远是用户所选的预处理模式，保证清晰输入的行为可预期
+      const passes = [await makePass(settings.preprocess, settings.preprocess)];
+      if (settings.preprocess === 'auto' && settings.adaptive !== false) {
+        // 真实照片的最优预处理因图而异：白底扫描件需要二值化，木纹背景怕二值化，
+        // 单一启发式与「仅低置信度才重试」都覆盖不到（有的错版置信度高达 81%）。
+        // 补跑未命中的路线，用不依赖参考答案的打分函数保守选优。
+        const extra = (['binary', 'gray'] as PreprocessMode[])
+          .filter((m) => m !== passes[0].prep.applied);
+        for (const m of extra) {
+          onProgress?.(i, pageNumbers.length, `第 ${n} 页自适应比对（${m}）…`);
+          passes.push(await makePass(m, m));
+        }
       }
+      let pass = passes[0];
+      if (passes.length > 1) {
+        const { best } = pickBestCandidate(passes.map((p) => ({
+          text: p.text,
+          confidence: p.data.confidence ?? 0,
+          key: p.key,
+          upscale: p.prep.stats.upscale,
+        })));
+        pass = passes.find((p) => p.key === best.key) ?? passes[0];
+      }
+
+      const { data, proc, prep, words, columns, text } = pass;
       out.push({
         pageNumber: n,
-        text: correctOcrText(normalizeOcrText(raw)),
+        text,
         confidence: data.confidence ?? 0,
         source: 'ocr',
         columns,

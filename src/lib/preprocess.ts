@@ -38,8 +38,9 @@ export interface PreprocessResult {
 }
 
 const CJK_RE = /[\u3400-\u4dbf\u4e00-\u9fff\u3040-\u30ff\u3000-\u303f\uff00-\uffef]/;
-/** 小图自动放大阈值：宽度低于 1800px 且面积不超过 600 万像素时放大 2 倍 */
+/** 小图自动放大阈值：宽度低于 1800px、短边低于 800px 且面积不超过 600 万像素时放大 2 倍 */
 const AUTO_UPSCALE_WIDTH = 1800;
+const AUTO_UPSCALE_MIN_SIDE = 800;
 const AUTO_UPSCALE_MAX_AREA = 6_000_000;
 
 export function rgbaToGray(rgba: Uint8ClampedArray, width: number, height: number): GrayImage {
@@ -337,10 +338,14 @@ export function preprocessGray(
   mode: PreprocessMode,
   opts: { deskew?: boolean; largeArea?: number; upscale?: number } = {},
 ): PreprocessResult {
-  // 与离线验收链路一致：小图先放大到 Tesseract 舒适的字高（约 30~40px）。
+  // 整页照片 / 扫描件的短边通常已上千像素，字高本来就够；此时 2× 双线性
+  // 插值不增加信息，反而引入模糊并放大背景纹理（实测真实证件照 CER 明显变差）。
+  // 只有「窄条带 / 小图」才需要放大到 Tesseract 舒适的字高（约 30~40px）。
   // 调用方显式指定 upscale 时以其为准（例如身份证模块固定 2×）。
+  const shortSide = Math.min(source.width, source.height);
   const factor = opts.upscale ?? (
     source.width < AUTO_UPSCALE_WIDTH
+      && shortSide < AUTO_UPSCALE_MIN_SIDE
       && source.width * source.height <= AUTO_UPSCALE_MAX_AREA ? 2 : 1
   );
   let base = factor > 1 ? upscaleGray(source, factor) : source;

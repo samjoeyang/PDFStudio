@@ -23,7 +23,7 @@ const MODES: { id: ExtractMode; label: string; hint: string }[] = [
 
 const DPI_OPTIONS = [200, 300, 350, 400, 500];
 const PREP_OPTIONS: { id: PreprocessMode; label: string; hint: string }[] = [
-  { id: 'auto', label: '自动', hint: '按需二值化 / 去噪 / 纠偏 / 反相' },
+  { id: 'auto', label: '自动', hint: '按需增强；开启自适应时自动比对多种方案' },
   { id: 'gray', label: '灰度增强', hint: '对比度拉伸 + 去噪' },
   { id: 'binary', label: '二值化', hint: '适合阴影、光照不均的翻拍件' },
   { id: 'none', label: '原图', hint: '不做任何处理，最快' },
@@ -183,7 +183,7 @@ export default function OcrPanel({ baseBytes, pageCount, scopeLabel, onClose, no
                     onChange={(e) => patch('psm', e.target.value as OcrPsm)}>
                     {PSM_OPTIONS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
                   </select>
-                  <small>票据、表单可选「稀疏文字」</small>
+                  <small>票据 / 表单选「稀疏文字」；手机翻拍证件、带纹理背景选「单栏」</small>
                 </label>
                 <label>
                   <span>识别语言</span>
@@ -195,6 +195,11 @@ export default function OcrPanel({ baseBytes, pageCount, scopeLabel, onClose, no
                 </label>
               </div>
               <div className="settings-foot">
+                <label className="checkline">
+                  <input type="checkbox" checked={settings.adaptive !== false} disabled={running}
+                    onChange={(e) => patch('adaptive', e.target.checked)} />
+                  自适应比对多种预处理（更准，多页会慢约 2 倍）
+                </label>
                 <label className="checkline">
                   <input type="checkbox" checked={settings.layout} disabled={running}
                     onChange={(e) => patch('layout', e.target.checked)} />

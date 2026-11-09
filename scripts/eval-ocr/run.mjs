@@ -16,7 +16,7 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { createCanvas, loadImage, ImageData } from "@napi-rs/canvas";
 import { createWorker, PSM } from "tesseract.js";
-import { transform } from "esbuild";
+import { transform, build } from "esbuild";
 import { cer } from "./lib-cer.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -36,6 +36,7 @@ const PSM_MAP = {
   auto: PSM.AUTO,
   column: PSM.SINGLE_COLUMN,
   sparse: PSM.SPARSE_TEXT,
+  line: PSM.SINGLE_LINE,
 };
 
 // ---- 编译项目里的 preprocess.ts / ocr-correct.ts，保持与线上一致 ----
@@ -51,6 +52,22 @@ async function loadCorrect() {
   return import("data:text/javascript;base64," + Buffer.from(code).toString("base64"));
 }
 
+// 有相对导入的模块需要 bundle 成单文件再加载
+async function loadBundled(entry) {
+  const { outputFiles } = await build({
+    entryPoints: [path.join(REPO, "src", "lib", entry)],
+    bundle: true,
+    format: "esm",
+    write: false,
+    logLevel: "silent",
+  });
+  const code = outputFiles[0].text;
+  return import("data:text/javascript;base64," + Buffer.from(code).toString("base64"));
+}
+
+const loadDetect = () => loadBundled("idcard-detect.ts");
+const loadAdaptive = () => loadBundled("ocr-adaptive.ts");
+
 // ---- 样本加载：图片或 PDF ----
 async function loadImageData(filePath, dpi = DEFAULT_DPI) {
   if (filePath.toLowerCase().endsWith(".pdf")) {
@@ -62,6 +79,52 @@ async function loadImageData(filePath, dpi = DEFAULT_DPI) {
   ctx.drawImage(img, 0, 0);
   const { data } = ctx.getImageData(0, 0, img.width, img.height);
   return { rgba: data, width: img.width, height: img.height };
+}
+
+/** app 同款证件定位：analyzePixels 找卡片矩形并裁剪，模拟真实用户路径 */
+async function detectCardCrop(img, detect) {
+  const a = detect.analyzePixels({
+    width: img.width,
+    height: img.height,
+    data: img.rgba,
+  });
+  const located = a.fit >= 0.22 && a.quality >= 0.2;
+  // 定位失败时 analyzePixels 的 rect 会退化成极小裁切（合并正反面 / 纹理背景常见），
+  // 再叠加预处理的自动放大就会把正文切没。此时必须退回整图，不做任何裁剪。
+  if (!located) {
+    return {
+      ...img,
+      located: false,
+      fit: a.fit,
+      quality: a.quality,
+    };
+  }
+  // 未定位成功（fit 差）时 analyzePixels 的 rect 已退化为最小裁切，直接沿用
+  const x0 = Math.round(a.rect.x * img.width);
+  const y0 = Math.round(a.rect.y * img.height);
+  const w = Math.max(8, Math.round(a.rect.w * img.width));
+  const h = Math.max(8, Math.round(a.rect.h * img.height));
+  const c = createCanvas(w, h);
+  const ctx = c.getContext("2d");
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, w, h);
+  ctx.drawImage(
+    (() => {
+      const src = createCanvas(img.width, img.height);
+      src.getContext("2d").putImageData(new ImageData(img.rgba, img.width, img.height), 0, 0);
+      return src;
+    })(),
+    x0, y0, w, h, 0, 0, w, h,
+  );
+  const { data } = ctx.getImageData(0, 0, w, h);
+  return {
+    rgba: data,
+    width: w,
+    height: h,
+    located,
+    fit: a.fit,
+    quality: a.quality,
+  };
 }
 
 async function loadPdfPage(filePath, dpi) {
@@ -122,27 +185,73 @@ async function getWorker(langKey) {
   return workerCache.get(langKey);
 }
 
-async function recognize({ rgba, width, height }, settings, prep) {
-  const gray = prep.rgbaToGray(rgba, width, height);
-  const result = prep.preprocessGray(gray, settings.preprocess || "auto", {});
-  const out = prep.grayToRgba(result.image);
-  const c = createCanvas(result.image.width, result.image.height);
-  c.getContext("2d").putImageData(
-    new ImageData(out, result.image.width, result.image.height),
-    0,
-    0,
-  );
-  const buffer = c.toBuffer("image/png");
-
+/**
+ * 多候选自适应识别。inputs[0] 为整图（基线），后续为可选的证件定位裁剪图。
+ * auto 模式下枚举「输入 × 预处理模式」少量候选，用共享打分函数选优；
+ * 显式指定 preprocess 时退化为单次识别，保证已有对照实验口径不变。
+ */
+async function recognize(inputs, settings, prep, correct, adaptive) {
   const worker = await getWorker(settings.lang || "chi+eng");
   await worker.setParameters({
     tessedit_pageseg_mode: PSM_MAP[settings.psm || "block"],
     preserve_interword_spaces: "1",
     user_defined_dpi: "300",
+    // 显式设空串清除上一次的白名单（worker 参数跨样本保留）
+    tessedit_char_whitelist: settings.whitelist ?? "",
   });
-  const { data } = await worker.recognize(buffer, {}, { text: true });
-  const text = prep.normalizeOcrText((data.text || "").trim());
-  return { text, confidence: data.confidence ?? 0, applied: result.applied, stats: result.stats };
+
+  const mode = settings.preprocess || "auto";
+  const langEng = (settings.lang || "chi+eng") === "eng";
+  const candidates = [];
+
+  for (const inp of inputs) {
+    const gray = prep.rgbaToGray(inp.rgba, inp.width, inp.height);
+    // 先算一次 auto 的 applied，用于去掉与启发式重复的显式候选（省一次 OCR）
+    const autoProbe = prep.preprocessGray(gray, "auto", {});
+    const modes = mode !== "auto"
+      ? [mode]
+      : ["auto", "binary", "gray"].filter(
+          (m) => m === "auto" || m !== autoProbe.applied,
+        );
+    for (const m of modes) {
+      const result = m === "auto" ? autoProbe : prep.preprocessGray(gray, m, {});
+      const out = prep.grayToRgba(result.image);
+      const c = createCanvas(result.image.width, result.image.height);
+      c.getContext("2d").putImageData(
+        new ImageData(out, result.image.width, result.image.height), 0, 0,
+      );
+      const { data } = await worker.recognize(c.toBuffer("image/png"), {}, { text: true });
+      const raw = prep.normalizeOcrText((data.text || "").trim());
+      let finalText = correct.correctOcrText(raw);
+      if (!langEng) finalText = correct.filterNoiseLines(finalText);
+      candidates.push({
+        text: finalText,
+        raw,
+        confidence: data.confidence ?? 0,
+        key: `${inp.key}/${m}/${result.stats.upscale}x→${result.applied}`,
+        upscale: result.stats.upscale,
+        applied: result.applied,
+        stats: result.stats,
+      });
+    }
+  }
+
+  const pick = candidates.length > 1
+    ? adaptive.pickBestCandidate(candidates)
+    : { best: candidates[0], baseline: candidates[0], switched: false, scores: [] };
+  const best = pick.best;
+  return {
+    text: best.raw,
+    corrected: best.text,
+    confidence: best.confidence,
+    applied: best.applied,
+    candidate: best.key,
+    switched: pick.switched,
+    stats: best.stats,
+    candidates: candidates.map((c, i) => ({
+      key: c.key, conf: c.confidence, score: pick.scores[i] ?? null,
+    })),
+  };
 }
 
 // ---- 主流程 ----
@@ -156,6 +265,8 @@ function readReference(ref) {
 async function main() {
   const prep = await loadPreprocess();
   const correct = await loadCorrect();
+  const detect = await loadDetect();
+  const adaptive = await loadAdaptive();
   const manifestPath = path.join(SAMPLES_DIR, "manifest.json");
   let manifest;
   try {
@@ -163,6 +274,15 @@ async function main() {
   } catch (e) {
     console.error(`无法读取 manifest.json：${e.message}`);
     process.exit(1);
+  }
+
+  // --only <正则>：只评测 id 匹配的样本，用于快速回归单个/一组样本
+  const onlyIdx = process.argv.indexOf("--only");
+  const onlyArg = onlyIdx >= 0 ? process.argv[onlyIdx + 1] : null;
+  if (onlyArg) {
+    const re = new RegExp(onlyArg);
+    manifest = manifest.filter((s) => re.test(s.id));
+    console.log(`[过滤] 仅评测 ${manifest.length} 个样本：${manifest.map((s) => s.id).join(", ")}\n`);
   }
 
   const rows = [];
@@ -173,9 +293,19 @@ async function main() {
     const file = path.join(SAMPLES_DIR, s.file);
     process.stdout.write(`识别中：${s.id} ... `);
     try {
-      const img = await loadImageData(file, s.dpi || DEFAULT_DPI);
-      const { text, confidence, applied, stats } = await recognize(img, s, prep);
-      const corrected = correct.correctOcrText(text);
+      const full = await loadImageData(file, s.dpi || DEFAULT_DPI);
+      const inputs = [{ key: "full", ...full }];
+      let detectInfo = "";
+      if (s.detect === "card") {
+        const det = await detectCardCrop(full, detect);
+        detectInfo = ` [定位${det.located ? "✓" : "✗"} fit=${det.fit.toFixed(2)}]`;
+        // 定位成功才把裁剪图作为额外候选；失败时 rect 已退化，整图是唯一可信输入
+        if (det.located) {
+          inputs.push({ key: "crop", rgba: det.rgba, width: det.width, height: det.height });
+        }
+      }
+      const res = await recognize(inputs, s, prep, correct, adaptive);
+      const { text, corrected, confidence, applied, stats } = res;
       const ref = readReference(s.ref);
       const r = cer(ref, text);
       const r2 = cer(ref, corrected);
@@ -190,11 +320,18 @@ async function main() {
         conf: confidence / 100,
         prep: applied,
         up: stats.upscale,
+        candidate: res.candidate,
+        switched: res.switched,
+        candidates: res.candidates,
         refLen: r.refLen,
+        text,
+        textAfter: corrected,
+        ref,
       });
       const d = ((r.cer - r2.cer) * 100).toFixed(2);
       console.log(
-        `CER=${(r2.cer * 100).toFixed(2)}%（纠错前 ${(r.cer * 100).toFixed(2)}%，Δ${r2.cer < r.cer ? "-" : "+"}${d}pp）  置信=${confidence.toFixed(0)}%  [${applied}${stats.upscale > 1 ? ` ${stats.upscale}x` : ""}]`,
+        `CER=${(r2.cer * 100).toFixed(2)}%（纠错前 ${(r.cer * 100).toFixed(2)}%，Δ${r2.cer < r.cer ? "-" : "+"}${d}pp）  置信=${confidence.toFixed(0)}%  [${applied}${stats.upscale > 1 ? ` ${stats.upscale}x` : ""}]` +
+        `${res.switched ? ` (自适应→${res.candidate})` : ""}${detectInfo}`,
       );
     } catch (e) {
       console.log(`失败：${e.message}`);
@@ -250,12 +387,21 @@ async function main() {
     rows,
   };
   const fs = await import("node:fs");
+  // 过滤模式写到单独文件，避免覆盖完整基线
+  const outName = onlyArg ? "last-result-only.json" : "last-result.json";
   fs.writeFileSync(
-    path.join(__dirname, "last-result.json"),
+    path.join(__dirname, outName),
     JSON.stringify(out, null, 2),
     "utf8",
   );
-  console.log(`结果已写入 scripts/eval-ocr/last-result.json`);
+  console.log(`结果已写入 scripts/eval-ocr/${outName}`);
+
+  // Tesseract worker 会一直占用事件循环；不显式 terminate，结果写完进程也不退出，
+  // 表现为「评测跑了一小时还没结束」。必须在 main 末尾统一回收。
+  for (const pending of workerCache.values()) {
+    try { (await pending).terminate(); } catch { /* 已终止则忽略 */ }
+  }
+  workerCache.clear();
 }
 
 main().catch((e) => {

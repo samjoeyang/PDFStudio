@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { DragEvent, PointerEvent as ReactPointerEvent } from 'react';
 import {
   autoGeometry, buildIdCardPdf, CARD_PX_H, CARD_PX_W, DEFAULT_OPTIONS,
-  detectSideByOcr, geometryAt, guessSideFromName, layoutPlacements,
+  detectSideByOcr, extractIdNumber, geometryAt, guessSideFromName, layoutPlacements,
   loadImageFile, minimalCrop, panCrop, renderCardCanvas, resultHalfEmpty,
   SIDE_LABEL, sortCards, clampAngle, orthoSteps, withAngle, zoomCrop,
 } from '../lib/idcard';
@@ -182,15 +182,19 @@ export default function IdCardPanel({ onClose, notify, onAddToWorkspace }: Props
     if (!cards.length || busy) return;
     setBusy(true);
     let flipped = 0;
+    let idFound = 0;
     try {
       for (let i = 0; i < cards.length; i++) {
         const c = cards[i];
         setStatus(`正在离线识别 ${i + 1}/${cards.length}…`);
         const g = await detectSideByOcr(c);
+        const side = g.side === 'unknown' ? c.side : g.side;
         const patch: Partial<IdCardSource> = {
-          side: g.side === 'unknown' ? c.side : g.side,
+          side,
           detectedBy: 'ocr',
           ocrText: g.text.slice(0, 300),
+          idNumber: undefined,
+          idNumberValid: undefined,
         };
         if (g.upsideDown) {
           // OCR 发现倒置：整图转 180° 后重新定位，裁剪框随之重建
@@ -198,9 +202,27 @@ export default function IdCardPanel({ onClose, notify, onAddToWorkspace }: Props
           Object.assign(patch, geometryAt(c.image, patch.rotation, c.angle));
           flipped++;
         }
+        // 人像面追加字段级号码提取（白名单 + 校验码），失败不影响判面
+        if (side === 'front') {
+          try {
+            setStatus(`正在提取证件号 ${i + 1}/${cards.length}…`);
+            const target = { ...c, ...patch } as IdCardSource;
+            const num = await extractIdNumber(target);
+            const best = num.number ?? num.repaired;
+            if (best) {
+              patch.idNumber = best;
+              patch.idNumberValid = num.valid;
+              if (num.valid) idFound++;
+            }
+          } catch { /* 号码提取失败不阻断判面流程 */ }
+        }
         updateCard(c.id, patch);
       }
-      notify(`识别完成${flipped ? ` · 已自动翻正 ${flipped} 张` : ''} · 可手动修正正反面`);
+      notify(
+        `识别完成${flipped ? ` · 已自动翻正 ${flipped} 张` : ''}` +
+        (idFound ? ` · ${idFound} 张号码通过校验` : '') +
+        ' · 可手动修正正反面',
+      );
     } catch (e) { notify(`识别失败：${errText(e)}`, 'err'); }
     finally { setBusy(false); setStatus(''); }
   }, [cards, busy, notify, updateCard]);
@@ -402,6 +424,14 @@ export default function IdCardPanel({ onClose, notify, onAddToWorkspace }: Props
                         {card.detectedBy === 'ocr' ? 'OCR 判定' : card.detectedBy === 'name' ? '按文件名判定' : '手动指定'}
                         {' · '}{SIDE_LABEL[card.side]}
                         {card.ocrText && <span title={card.ocrText}> · 识别到 {card.ocrText.length} 字</span>}
+                      </div>
+                    )}
+                    {card.idNumber && (
+                      <div className="idcard-detect">
+                        号码：<b className="mono">{card.idNumber}</b>
+                        {card.idNumberValid
+                          ? <span title="MOD 11-2 校验通过"> · ✓ 校验通过</span>
+                          : <span title="号码未通过校验码验证，请人工核对"> · ⚠ 未过校验</span>}
                       </div>
                     )}
                   </div>

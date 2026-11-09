@@ -41,6 +41,10 @@ export interface IdCardSource {
   side: CardSide;
   detectedBy?: 'ocr' | 'name' | 'manual';
   ocrText?: string;
+  /** 字段级白名单识别出的身份证号（仅人像面，通过校验时才填） */
+  idNumber?: string;
+  /** 号码是否通过 MOD 11-2 校验 */
+  idNumberValid?: boolean;
   locate?: { ok: boolean; quality: number; reason: string };
 }
 
@@ -245,7 +249,7 @@ export async function detectSideByOcr(card: IdCardSource): Promise<OcrGuess> {
   const { canvas } = processCanvas(renderCardCanvas(card), 'auto',
     { upscale: 2, deskew: false });
   const { data } = await worker.recognize(canvas.toDataURL('image/png'));
-  const text = correctOcrText(normalizeOcrText((data.text ?? '').trim()));
+  const text = filterNoiseLines(correctOcrText(normalizeOcrText((data.text ?? '').trim())));
   const guess = scoreSide(text);
   if (guess.side !== 'unknown' && guess.confidence >= 3) {
     return { ...guess, text, upsideDown: false };
@@ -261,11 +265,95 @@ export async function detectSideByOcr(card: IdCardSource): Promise<OcrGuess> {
     ctx.rotate(Math.PI);
     ctx.drawImage(canvas, 0, 0);
     const r2 = await worker.recognize(flipped.toDataURL('image/png'));
-    const t2 = correctOcrText(normalizeOcrText((r2.data.text ?? '').trim()));
+    const t2 = filterNoiseLines(correctOcrText(normalizeOcrText((r2.data.text ?? '').trim())));
     const g2 = scoreSide(t2);
     if (g2.confidence > guess.confidence) return { ...g2, text: t2, upsideDown: true };
   }
   return { ...guess, text, upsideDown: false };
+}
+
+// ---- 身份证号提取（白名单 + 校验码） ----
+
+import {
+  isValidIdNumber, expectedCheckDigit, findIdCandidate,
+} from './id-number';
+import { filterNoiseLines } from './ocr-correct';
+
+export { isValidIdNumber } from './id-number';
+
+export interface IdNumberResult {
+  /** 通过 MOD 11-2 校验的 18 位号码；未得到可信结果时为 undefined */
+  number?: string;
+  /** 原始识别串（规范化前），便于排查 */
+  raw: string;
+  /** 是否通过校验码验证 */
+  valid: boolean;
+  /** 当 17 位主体可信、仅校验位错时给出修复候选（仍标记 valid=false 由调用方决定） */
+  repaired?: string;
+}
+
+/**
+ * 字段级二次识别身份证号：号码行固定在证件底部约 72%~96% 高度。
+ * 流程：裁剪号码带 → 白名单('0123456789X')单行识别 → 混淆字符规范化
+ * → 正则提取 18 位 → MOD 11-2 校验。白名单失败时回退到无白名单全宽识别。
+ */
+export async function extractIdNumber(card: IdCardSource): Promise<IdNumberResult> {
+  const worker = await getWorker();
+  const cardCanvas = renderCardCanvas(card);
+
+  const bandTop = Math.round(cardCanvas.height * 0.70);
+  const bandH = Math.round(cardCanvas.height * 0.26);
+  const band = document.createElement('canvas');
+  band.width = cardCanvas.width;
+  band.height = bandH;
+  const bctx = band.getContext('2d');
+  if (!bctx) throw new Error('无法创建 canvas 上下文');
+  bctx.fillStyle = '#ffffff';
+  bctx.fillRect(0, 0, band.width, band.height);
+  bctx.drawImage(
+    cardCanvas, 0, bandTop, cardCanvas.width, bandH,
+    0, 0, band.width, band.height,
+  );
+
+  // 号码行是单一长串，用 SINGLE_LINE；白名单只留数字与 X。
+  // 识别链路逐级兜底：auto 预处理 → Sauvola 二值化（治椒盐噪声）→ 无白名单稀疏模式。
+  // （tesseract.js 的 LSTM 对白名单是硬过滤，输入稍差会输出空串，所以必须留退路）
+  const passes: Array<{ mode: 'auto' | 'binary'; sparse: boolean }> = [
+    { mode: 'auto', sparse: false },
+    { mode: 'binary', sparse: false },
+    { mode: 'binary', sparse: true },
+  ];
+  let raw = '';
+  let candidate: string | undefined;
+  for (const [idx, p] of passes.entries()) {
+    const { canvas } = processCanvas(band, p.mode, { upscale: 3, deskew: false });
+    await worker.setParameters({
+      tessedit_pageseg_mode: p.sparse ? PSM.SPARSE_TEXT : PSM.SINGLE_LINE,
+      tessedit_char_whitelist: p.sparse ? '' : '0123456789X',
+      preserve_interword_spaces: '1',
+      user_defined_dpi: '300',
+    });
+    const { data } = await worker.recognize(canvas.toDataURL('image/png'));
+    raw = (data.text ?? '').trim();
+    candidate = findIdCandidate(raw);
+    if (candidate) {
+      // 首选通过即停；校验失败也继续兜底重试，取后续更可信结果
+      if (idx === passes.length - 1 || isValidIdNumber(candidate)) break;
+    }
+  }
+
+  if (!candidate) return { raw, valid: false };
+
+  const valid = isValidIdNumber(candidate);
+  const result: IdNumberResult = { raw, valid };
+  if (valid) {
+    result.number = candidate;
+  } else {
+    // 17 位主体通常比对错校验位更可信：算出应有校验位供参考
+    const fixed = candidate.slice(0, 17) + expectedCheckDigit(candidate.slice(0, 17));
+    if (fixed !== candidate) result.repaired = fixed;
+  }
+  return result;
 }
 
 /**
