@@ -126,6 +126,11 @@ a:hover { text-decoration: underline; }
   padding: 1px 6px; border-radius: 6px; font-size: 13px;
 }
 .note { font-size: 13px; color: var(--fg-soft); border-left: 3px solid var(--border); padding-left: 10px; margin-top: 12px; }
+/* 下载区版本更新提示：居中、柔和，不抢下载按钮的视觉重心 */
+.release-note {
+  max-width: 860px; margin: -18px auto 24px; text-align: center;
+  color: var(--fg-soft); font-size: 13px; line-height: 1.7;
+}
 .usage-tips {
   margin-top: 22px; background: var(--bg); border: 1px solid var(--border);
   border-radius: var(--radius); padding: 22px;

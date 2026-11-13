@@ -36,6 +36,8 @@
 
 > 所有历史版本见 [Releases](https://github.com/samjoeyang/PDFStudio/releases)。
 
+> **v0.1.2 更新**：修复 macOS 12 Monterey（及使用旧版 WebKit 的系统）下启动后窗口全白的问题，Intel 与 Apple 芯片版本均已修复。v0.1.1 的 macOS Intel 安装包存在该问题，请直接下载 v0.1.2 或更新版本。
+>
 > **旧版 macOS 兼容**：Tauri 使用系统自带的 WKWebView。macOS 12 Monterey 的 WebKit（17613，Safari 16 早期内核）不支持 ES2022 类静态块和正则后行断言，也不提供 `Promise.withResolvers`；前端若按 `esnext` 输出，整个 ES module 会在解析阶段失败，表现为「窗口全白」。因此 `vite.config.ts` 固定 `build.target: 'es2020'`、OCR 纠错规则改为捕获组实现、`index.html` 注入 `Promise.withResolvers`，并由 `scripts/patch-worker.mjs` 对 pdf.js worker 做同样处理。升级 pdfjs-dist 等依赖时请保留这几处，否则旧系统会再次白屏。
 
 ---

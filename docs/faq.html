@@ -57,6 +57,14 @@
       },
       {
             "@type": "Question",
+            "name": "macOS 12 或 Intel 版打开后窗口一片空白怎么办？",
+            "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "这是 v0.1.1 及更早版本在旧系统上的兼容性问题，与芯片架构无关。macOS 12 Monterey 自带的 WKWebView（WebKit 17613，Safari 16 早期内核）不支持 ES2022 类静态块、正则后行断言，也不提供 Promise.withResolvers，前端脚本在解析阶段就失败，界面因此没有渲染。升级到 v0.1.2 或更新版本即可解决：项目已把前端构建目标固定为 ES2020，并对 pdf.js worker 做同样的降级与 polyfill。"
+            }
+      },
+      {
+            "@type": "Question",
             "name": "如何确认我下载的是真实的 PDF Studio？",
             "acceptedAnswer": {
                   "@type": "Answer",
@@ -116,6 +124,11 @@
     <section>
       <h3>Q：PDF Studio 支持哪些系统？需要联网吗？</h3>
       <p>支持 macOS（Apple 芯片与 Intel）、Windows（32/64 位）、Linux（AppImage / deb）。所有 PDF 处理均在本地完成，OCR 引擎与语言包随应用内置，断网可正常使用，文档不上传任何服务器。</p>
+    </section>
+
+    <section>
+      <h3>Q：macOS 12 或 Intel 版打开后窗口一片空白怎么办？</h3>
+      <p>这是 v0.1.1 及更早版本在旧系统上的兼容性问题，与芯片架构无关。macOS 12 Monterey 自带的 WKWebView（WebKit 17613，Safari 16 早期内核）不支持 ES2022 类静态块、正则后行断言，也不提供 <code>Promise.withResolvers</code>，前端脚本在解析阶段就失败，界面因此没有渲染。升级到 v0.1.2 或更新版本即可解决：项目已把前端构建目标固定为 ES2020，并对 pdf.js worker 做同样的降级与 polyfill。</p>
     </section>
 
     <section>
