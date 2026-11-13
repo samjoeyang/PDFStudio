@@ -28,8 +28,7 @@
         "url": "https://samjoeyang.github.io/PDFStudio/",
         "description": "PDF Studio 是一款本地优先、离线可用的开源桌面 PDF 工作台，支持合并重排、批注签名与公章盖章、矢量 / 栅格双模式水印、文字提取与离线 OCR、身份证排版、压缩优化，跨 macOS / Windows / Linux。",
         "sameAs": [
-          "https://github.com/samjoeyang/PDFStudio",
-          "https://github.com/sponsors/samjoeyang"
+          "https://github.com/samjoeyang/PDFStudio"
         ]
       }
     ]
@@ -140,7 +139,7 @@
             <li>首次打开若提示“无法验证开发者”，在系统设置 → 隐私与安全性中点击「仍要打开」。</li>
             <li>直接把 PDF 拖进窗口，或点击「打开 PDF」开始处理。</li>
           </ol>
-          <p class="note">提示：未签名版本会被 Gatekeeper 拦截，属正常现象；如需消除提示可对应用进行签名与公证。</p>
+          <p class="note">提示：未签名版本会被 Gatekeeper 拦截，属正常现象；如需消除提示可对应用进行签名与公证。macOS 12 Monterey 等旧系统请使用 v0.1.2 或更新版本——更早的版本因系统自带 WebKit 较旧会出现启动白屏。</p>
         </div>
         <div class="usage-col">
           <h3>🪟 Windows</h3>
@@ -178,6 +177,7 @@
     <section id="download" class="section">
       <h2 class="section-title">下载</h2>
       <p class="section-sub">最新版本：<span id="dl-version">加载中…</span><span id="dl-date"></span></p>
+      <p class="release-note">v0.1.2 更新：修复 macOS 12 Monterey（旧版系统 WebKit）下 Intel / Apple 芯片版本启动后窗口全白的问题。旧版 macOS 用户请升级到 v0.1.2 或更新版本，v0.1.1 的 macOS Intel 安装包存在该问题。</p>
       <p id="dl-hint" class="dl-hint"></p>
       <div id="dl-grid" class="dl-grid">
         <div class="dl-card" data-plat="macos-apple">
@@ -225,8 +225,31 @@
 
     <!-- Discussion -->
     <section id="discuss" class="section section-alt">
-      <h2 class="section-title">讨论组</h2>
-      <p class="section-sub">遇到问题、有功能建议或想参与共建？欢迎在这些渠道交流。</p>
+      <h2 class="section-title">交流与讨论组</h2>
+      <p class="section-sub">遇到问题、有功能建议或想参与共建？加入 Telegram 群组与频道，与其他用户和开发者直接交流。</p>
+      <div class="tg-grid">
+        <div class="tg-card">
+          <img src="assets/telegram-group-qr.jpeg" alt="Telegram 官方群组二维码" width="180" height="180" loading="lazy" />
+          <div class="tg-info">
+            <div class="tg-label">💬 官方群组</div>
+            <h3>加入用户交流群</h3>
+            <p>与开发者和其他用户一起交流使用心得、反馈问题、分享创意。</p>
+            <a class="tg-btn" href="https://t.me/+3KH9Cn8-yIQ1ZDI1" target="_blank" rel="noopener">加入群组</a>
+            <p class="tg-hint">打开 Telegram 扫码，或点击按钮加入</p>
+          </div>
+        </div>
+        <div class="tg-card">
+          <img src="assets/telegram-channel-qr.jpeg" alt="Telegram 官方频道二维码" width="180" height="180" loading="lazy" />
+          <div class="tg-info">
+            <div class="tg-label">📢 官方频道</div>
+            <h3>关注更新动态</h3>
+            <p>第一时间获取版本更新、功能预告与开发动态。</p>
+            <a class="tg-btn" href="https://t.me/+KN45JemRvb5kMmNl" target="_blank" rel="noopener">关注频道</a>
+            <p class="tg-hint">打开 Telegram 扫码，或点击按钮关注</p>
+          </div>
+        </div>
+      </div>
+      <h3 class="links-title">其他渠道</h3>
       <div class="links">
         <a class="link-card" href="https://github.com/samjoeyang/PDFStudio/discussions" target="_blank" rel="noopener">
           <div class="link-ico">💬</div>
@@ -247,16 +270,7 @@
     <section id="sponsor" class="section">
       <h2 class="section-title">赞助</h2>
       <p class="section-sub">如果这个工具帮到了你，欢迎请作者喝杯咖啡 ☕，支持持续开发与免费分发。</p>
-      <div class="links">
-        <a class="link-card" href="https://github.com/sponsors/samjoeyang" target="_blank" rel="noopener">
-          <div class="link-ico">❤️</div>
-          <div><strong>GitHub Sponsors</strong><span>每月或一次性支持</span></div>
-        </a>
-        <a class="link-card" href="https://afdian.com/a/pdfstudio" target="_blank" rel="noopener">
-          <div class="link-ico">🧧</div>
-          <div><strong>爱发电</strong><span>国内的赞助渠道</span></div>
-        </a>
-      </div>
+      <!-- GitHub Sponsors / 爱发电账号尚未开通，两个渠道暂不展示；开通后在此恢复 .link-card 卡片。 -->
       <div class="sponsor-qr">
         <figure>
           <img src="assets/sponsor-wechat.jpg" alt="微信支付收款二维码" width="180" height="180" loading="lazy" />
