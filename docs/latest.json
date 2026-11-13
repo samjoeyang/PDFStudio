@@ -1,37 +1,37 @@
 {
-  "version": "0.1.1",
-  "tag": "v0.1.1",
-  "publishedAt": "2026-11-13T04:20:45Z",
-  "notes": "**Full Changelog**: https://github.com/samjoeyang/PDFStudio/compare/v0.1.0...v0.1.1",
+  "version": "0.1.2",
+  "tag": "v0.1.2",
+  "publishedAt": "2026-11-13T07:50:27Z",
+  "notes": "**Full Changelog**: https://github.com/samjoeyang/PDFStudio/compare/v0.1.1...v0.1.2",
   "assets": {
     "macos-apple": {
-      "url": "https://github.com/samjoeyang/PDFStudio/releases/download/v0.1.1/PDFStudio-0.1.1-macos-apple.dmg",
-      "size": 47856570,
+      "url": "https://github.com/samjoeyang/PDFStudio/releases/download/v0.1.2/PDFStudio-0.1.2-macos-apple.dmg",
+      "size": 47837017,
       "altUrl": null,
       "altLabel": ""
     },
     "macos-intel": {
-      "url": "https://github.com/samjoeyang/PDFStudio/releases/download/v0.1.1/PDFStudio-0.1.1-macos-intel.dmg",
-      "size": 47586714,
+      "url": "https://github.com/samjoeyang/PDFStudio/releases/download/v0.1.2/PDFStudio-0.1.2-macos-intel.dmg",
+      "size": 47563723,
       "altUrl": null,
       "altLabel": ""
     },
     "windows-x64": {
-      "url": "https://github.com/samjoeyang/PDFStudio/releases/download/v0.1.1/PDFStudio-0.1.1-windows-x64.msi",
-      "size": 47218688,
-      "altUrl": "https://github.com/samjoeyang/PDFStudio/releases/download/v0.1.1/PDFStudio-0.1.1-windows-x64.exe",
+      "url": "https://github.com/samjoeyang/PDFStudio/releases/download/v0.1.2/PDFStudio-0.1.2-windows-x64.msi",
+      "size": 47198208,
+      "altUrl": "https://github.com/samjoeyang/PDFStudio/releases/download/v0.1.2/PDFStudio-0.1.2-windows-x64.exe",
       "altLabel": "便携版 (.exe)"
     },
     "windows-x86": {
-      "url": "https://github.com/samjoeyang/PDFStudio/releases/download/v0.1.1/PDFStudio-0.1.1-windows-x86.msi",
-      "size": 46927872,
-      "altUrl": "https://github.com/samjoeyang/PDFStudio/releases/download/v0.1.1/PDFStudio-0.1.1-windows-x86.exe",
+      "url": "https://github.com/samjoeyang/PDFStudio/releases/download/v0.1.2/PDFStudio-0.1.2-windows-x86.msi",
+      "size": 46903296,
+      "altUrl": "https://github.com/samjoeyang/PDFStudio/releases/download/v0.1.2/PDFStudio-0.1.2-windows-x86.exe",
       "altLabel": "便携版 (.exe)"
     },
     "linux-x86_64": {
-      "url": "https://github.com/samjoeyang/PDFStudio/releases/download/v0.1.1/PDFStudio-0.1.1-linux-x86_64.AppImage",
-      "size": 131607032,
-      "altUrl": "https://github.com/samjoeyang/PDFStudio/releases/download/v0.1.1/PDFStudio-0.1.1-linux-x86_64.deb",
+      "url": "https://github.com/samjoeyang/PDFStudio/releases/download/v0.1.2/PDFStudio-0.1.2-linux-x86_64.AppImage",
+      "size": 131586552,
+      "altUrl": "https://github.com/samjoeyang/PDFStudio/releases/download/v0.1.2/PDFStudio-0.1.2-linux-x86_64.deb",
       "altLabel": "Debian (.deb)"
     }
   }
