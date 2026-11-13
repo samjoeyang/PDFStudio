@@ -126,9 +126,7 @@ git tag v0.1.0 && git push origin v0.1.0
 
 ## ☕ 赞助
 
-如果这个工具帮到了你，欢迎支持持续开发：
-- ❤️ [GitHub Sponsors](https://github.com/sponsors/samjoeyang)
-- 🧧 爱发电（链接待补充）
+支持方式见官网「赞助」区块的微信 / 支付宝收款二维码。
 
 ---
 
