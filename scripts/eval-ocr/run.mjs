@@ -11,7 +11,9 @@
 // 运行：node scripts/eval-ocr/run.mjs
 //   （可选）npm run eval:ocr:gen  重新生成合成样例
 
-import { readFileSync, readdirSync } from "node:fs";
+import { readFileSync, readdirSync, unlinkSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { createCanvas, loadImage, ImageData } from "@napi-rs/canvas";
@@ -128,6 +130,29 @@ async function detectCardCrop(img, detect) {
 }
 
 async function loadPdfPage(filePath, dpi) {
+  // macOS：pdfjs 的 page.render 与 @napi-rs/canvas 在 Node 22 下会触发原生段错误
+  // （退出码 139，连 catch 都来不及）。改用系统自带的 sips 离线栅格化，
+  // 先取 72dpi 基准宽度，再按目标 DPI 重采样，保持与原 pdfjs 路径同尺度。
+  if (process.platform === "darwin") {
+    const probe = path.join(os.tmpdir(), `ocr-eval-probe-${process.pid}.png`);
+    const out = path.join(os.tmpdir(), `ocr-eval-page-${process.pid}.png`);
+    try {
+      execFileSync("sips", ["-s", "format", "png", filePath, "--out", probe],
+        { stdio: "ignore" });
+      const base = await loadImage(probe);
+      const targetW = Math.max(1, Math.round(base.width * dpi / 72));
+      execFileSync("sips", ["-s", "format", "png", "--resampleWidth", String(targetW),
+        filePath, "--out", out], { stdio: "ignore" });
+      const result = await loadImageData(out);
+      return result;
+    } catch (e) {
+      console.warn(`[PDF] sips 栅格化失败，回退 pdfjs：${e.message}`);
+    } finally {
+      for (const f of [probe, out]) {
+        try { unlinkSync(f); } catch { /* 临时文件可能不存在 */ }
+      }
+    }
+  }
   const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
   try {
     const workerPath = path.join(
@@ -156,9 +181,14 @@ async function loadPdfPage(filePath, dpi) {
       const cc = createCanvas(cw, ch);
       return { canvas: cc, context: cc.getContext("2d") };
     },
+    // @napi-rs/canvas 改 width/height 会让原 context 失效；必须重取，
+    // 否则 pdfjs 复用该 context 时会触发原生段错误（退出码 139）。
     reset: (obj, cw, ch) => {
-      obj.canvas.width = cw;
-      obj.canvas.height = ch;
+      if (obj.canvas.width !== cw || obj.canvas.height !== ch) {
+        obj.canvas.width = cw;
+        obj.canvas.height = ch;
+      }
+      obj.context = obj.canvas.getContext("2d");
     },
     destroy: () => {},
   };
@@ -192,48 +222,68 @@ async function getWorker(langKey) {
  */
 async function recognize(inputs, settings, prep, correct, adaptive) {
   const worker = await getWorker(settings.lang || "chi+eng");
-  await worker.setParameters({
-    tessedit_pageseg_mode: PSM_MAP[settings.psm || "block"],
-    preserve_interword_spaces: "1",
-    user_defined_dpi: "300",
-    // 显式设空串清除上一次的白名单（worker 参数跨样本保留）
-    tessedit_char_whitelist: settings.whitelist ?? "",
-  });
-
-  const mode = settings.preprocess || "auto";
   const langEng = (settings.lang || "chi+eng") === "eng";
+  const mode = settings.preprocess || "auto";
+  const basePsm = settings.psm || "block";
   const candidates = [];
+  const variants = [];
 
   for (const inp of inputs) {
     const gray = prep.rgbaToGray(inp.rgba, inp.width, inp.height);
     // 先算一次 auto 的 applied，用于去掉与启发式重复的显式候选（省一次 OCR）
     const autoProbe = prep.preprocessGray(gray, "auto", {});
+    // 「原图 none」必须留在候选里：斜向阴影 / 光照渐变会让 Sauvola 二值化
+    // 把暗区文字整片抹掉，此时只有不做增强的原图能救回内容。
     const modes = mode !== "auto"
       ? [mode]
-      : ["auto", "binary", "gray"].filter(
+      : ["auto", "none", "binary", "gray"].filter(
           (m) => m === "auto" || m !== autoProbe.applied,
         );
     for (const m of modes) {
-      const result = m === "auto" ? autoProbe : prep.preprocessGray(gray, m, {});
-      const out = prep.grayToRgba(result.image);
-      const c = createCanvas(result.image.width, result.image.height);
-      c.getContext("2d").putImageData(
-        new ImageData(out, result.image.width, result.image.height), 0, 0,
-      );
-      const { data } = await worker.recognize(c.toBuffer("image/png"), {}, { text: true });
-      const raw = prep.normalizeOcrText((data.text || "").trim());
-      let finalText = correct.correctOcrText(raw);
-      if (!langEng) finalText = correct.filterNoiseLines(finalText);
-      candidates.push({
-        text: finalText,
-        raw,
-        confidence: data.confidence ?? 0,
-        key: `${inp.key}/${m}/${result.stats.upscale}x→${result.applied}`,
-        upscale: result.stats.upscale,
-        applied: result.applied,
-        stats: result.stats,
+      variants.push({
+        inp, m, deskew: true, psm: basePsm,
+        result: m === "auto" ? autoProbe : prep.preprocessGray(gray, m, {}),
       });
     }
+    if (mode === "auto") {
+      // 不纠偏兜底：投影法估角在渐变 / 纹理背景上可能误判，旋转会毁掉正文
+      variants.push({
+        inp, m: "none", deskew: false, psm: basePsm,
+        result: prep.preprocessGray(gray, "none", { deskew: false }),
+      });
+      // 版面模式维度：单栏在手机翻拍 / 纹理背景上通常比整块文字更稳
+      if (basePsm !== "column") {
+        variants.push({ inp, m: "auto", deskew: true, psm: "column", result: autoProbe });
+      }
+    }
+  }
+
+  for (const v of variants) {
+    // 每次都显式重设：worker 参数跨候选 / 跨样本保留，白名单必须清空
+    await worker.setParameters({
+      tessedit_pageseg_mode: PSM_MAP[v.psm],
+      preserve_interword_spaces: "1",
+      user_defined_dpi: "300",
+      tessedit_char_whitelist: settings.whitelist ?? "",
+    });
+    const out = prep.grayToRgba(v.result.image);
+    const c = createCanvas(v.result.image.width, v.result.image.height);
+    c.getContext("2d").putImageData(
+      new ImageData(out, v.result.image.width, v.result.image.height), 0, 0,
+    );
+    const { data } = await worker.recognize(c.toBuffer("image/png"), {}, { text: true });
+    const raw = prep.normalizeOcrText((data.text || "").trim());
+    let finalText = correct.correctOcrText(raw);
+    if (!langEng) finalText = correct.filterNoiseLines(finalText);
+    candidates.push({
+      text: finalText,
+      raw,
+      confidence: data.confidence ?? 0,
+      key: `${v.inp.key}/${v.m}/${v.deskew ? "deskew" : "raw"}/${v.result.stats.upscale}x→${v.result.applied}/${v.psm}`,
+      upscale: v.result.stats.upscale,
+      applied: v.result.applied,
+      stats: v.result.stats,
+    });
   }
 
   const pick = candidates.length > 1
@@ -250,6 +300,8 @@ async function recognize(inputs, settings, prep, correct, adaptive) {
     stats: best.stats,
     candidates: candidates.map((c, i) => ({
       key: c.key, conf: c.confidence, score: pick.scores[i] ?? null,
+      // 保留每个候选的文本片段，便于诊断「打分选中了乱码 / 过滤层清空了内容」
+      raw: c.raw.slice(0, 160), text: c.text.slice(0, 160),
     })),
   };
 }

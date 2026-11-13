@@ -8,7 +8,34 @@ const COLORS = ['#eab308', '#ef4444', '#22c55e', '#3b82f6', '#8b5cf6'];
 /** 遮挡用实色：黑 / 白 / 灰，跟高亮调色板分开，避免切工具后颜色串味 */
 const MASK_COLORS = ['#111111', '#ffffff', '#94a3b8'];
 const TOOL_LABEL: Record<AnnotationType, string> = {
-  highlight: '高亮', text: '文字', ink: '画笔', signature: '签名', mask: '遮挡',
+  highlight: '高亮', text: '文字', ink: '画笔', signature: '签名/盖章', mask: '遮挡',
+};
+
+/** 公章默认边长（相对页面宽度的归一化比例），约等于真实公章大小；可在编辑器内调 */
+const DEFAULT_SEAL_SIZE = 0.18;
+
+const annLabel = (a: Annotation): string => {
+  if (a.type === 'signature') return a.stamp === 'seal' ? '公章' : '签名';
+  return TOOL_LABEL[a.type];
+};
+
+const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+
+/** 由中心点 + 边长（归一化，相对页面宽）生成正方形框；按页面纵横比换算高度，确保视觉为正圆/正方 */
+const sealBox = (cx: number, cy: number, sideW: number, pageW: number, pageH: number): Box => {
+  const w = sideW;
+  const h = (sideW * pageW) / pageH;
+  const x = clamp(cx - w / 2, 0, Math.max(0, 1 - w));
+  const y = clamp(cy - h / 2, 0, Math.max(0, 1 - h));
+  return { x, y, w, h };
+};
+
+/** 由拖拽起止点生成居中、锁正方形的框（边长取拖拽像素较大边） */
+const sealBoxFromDrag = (
+  s: { x: number; y: number }, p: { x: number; y: number }, pageW: number, pageH: number,
+): Box => {
+  const sidePx = Math.max(Math.abs(p.x - s.x) * pageW, Math.abs(p.y - s.y) * pageH);
+  return sealBox((s.x + p.x) / 2, (s.y + p.y) / 2, sidePx / pageW, pageW, pageH);
 };
 
 interface Box { x: number; y: number; w: number; h: number }
@@ -32,6 +59,9 @@ export default function AnnotationEditor({ page, doc, order, initial, onSave, on
   const [textDraft, setTextDraft] = useState<{ box: Box; value: string } | null>(null);
   const [signature, setSignature] = useState('');
   const [showSignPad, setShowSignPad] = useState(false);
+  const [stampMode, setStampMode] = useState<'signature' | 'seal'>('signature');
+  const [sealSize, setSealSize] = useState(DEFAULT_SEAL_SIZE);
+  const [pendingUpload, setPendingUpload] = useState<string | null>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const signRef = useRef<HTMLCanvasElement>(null);
   const startRef = useRef<{ x: number; y: number } | null>(null);
@@ -106,6 +136,11 @@ export default function AnnotationEditor({ page, doc, order, initial, onSave, on
       return;
     }
     const s = startRef.current;
+    // 公章：锁定正方形（边长取拖拽像素较大边），不能自由变形
+    if (tool === 'signature' && stampMode === 'seal') {
+      setDraft(sealBoxFromDrag(s, p, size.w, size.h));
+      return;
+    }
     setDraft({
       x: Math.min(s.x, p.x), y: Math.min(s.y, p.y),
       w: Math.abs(p.x - s.x), h: Math.abs(p.y - s.y),
@@ -120,7 +155,7 @@ export default function AnnotationEditor({ page, doc, order, initial, onSave, on
       setTextDraft({ box, value: '' });
     } else if (tool === 'signature') {
       if (!signature) return;
-      setAnns((prev) => [...prev, { ...base, type: 'signature', image: signature }]);
+      setAnns((prev) => [...prev, { ...base, type: 'signature', image: signature, stamp: stampMode }]);
     } else if (tool === 'mask') {
       setAnns((prev) => [...prev, { ...base, type: 'mask' }]);
     }
@@ -148,6 +183,16 @@ export default function AnnotationEditor({ page, doc, order, initial, onSave, on
       x: Math.min(start.x, p.x), y: Math.min(start.y, p.y),
       w: Math.abs(p.x - start.x), h: Math.abs(p.y - start.y),
     };
+    // 公章：单击即拉出标准公章大小的正方形；拖拽则锁定正方形（可改尺寸，不能改形状）
+    if (tool === 'signature' && stampMode === 'seal') {
+      const isClick = box.w < 0.005 && box.h < 0.005;
+      const placed = isClick
+        ? sealBox(start.x, start.y, sealSize, size.w, size.h)
+        : sealBoxFromDrag(start, p, size.w, size.h);
+      setDraft(null);
+      finish(placed);
+      return;
+    }
     setDraft(null);
     if (box.w > 0.005 && box.h > 0.005) finish(box);
     else if (tool === 'text') finish({ ...box, w: 0.3, h: 0.04 });
@@ -189,6 +234,15 @@ export default function AnnotationEditor({ page, doc, order, initial, onSave, on
     if (data) setSignature(data);
     setShowSignPad(false);
     setTool('signature');
+    setStampMode('signature');
+  };
+
+  const chooseUpload = (stamp: 'signature' | 'seal') => {
+    if (!pendingUpload) return;
+    setSignature(pendingUpload);
+    setStampMode(stamp);
+    setTool('signature');
+    setPendingUpload(null);
   };
 
   const clearSignPad = () => {
@@ -200,7 +254,7 @@ export default function AnnotationEditor({ page, doc, order, initial, onSave, on
   const uploadSignature = (file?: File) => {
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = () => { setSignature(String(reader.result)); setTool('signature'); };
+    reader.onload = () => setPendingUpload(String(reader.result));
     reader.readAsDataURL(file);
   };
 
@@ -209,7 +263,7 @@ export default function AnnotationEditor({ page, doc, order, initial, onSave, on
       <div className="modal modal-annot">
         <div className="modal-head">
           <div>
-            <h3>批注与签名</h3>
+            <h3>批注与签章</h3>
             <span>第 {order + 1} 页 · {doc.name}</span>
           </div>
           <button className="icon-btn" onClick={onClose} aria-label="关闭">×</button>
@@ -232,14 +286,31 @@ export default function AnnotationEditor({ page, doc, order, initial, onSave, on
             {tool === 'mask' && <span className="muted small">遮挡颜色</span>}
           </div>
           <div className="btn-row">
-            <button className="btn btn-small" onClick={() => setShowSignPad(true)}>写签名</button>
+            <button className="btn btn-small" onClick={() => { setStampMode('signature'); setShowSignPad(true); }}>写签名</button>
             <label className="btn btn-small btn-file">
-              上传签名
+              上传签章
               <input type="file" accept="image/*" hidden
                 onChange={(e) => { uploadSignature(e.target.files?.[0]); e.target.value = ''; }} />
             </label>
-            {signature && <span className="sig-ready">签名已就绪</span>}
+            {signature && <span className="sig-ready">签章已就绪</span>}
           </div>
+          {tool === 'signature' && (
+            <div className="stamp-toggle">
+              <span className="muted small">类型</span>
+              <button className={`btn btn-small${stampMode === 'signature' ? ' is-active' : ''}`}
+                onClick={() => setStampMode('signature')}>签名</button>
+              <button className={`btn btn-small${stampMode === 'seal' ? ' is-active' : ''}`}
+                onClick={() => setStampMode('seal')}>公章</button>
+              {stampMode === 'seal' && (
+                <span className="seal-size">
+                  <span className="muted small">公章尺寸</span>
+                  <input type="range" min={0.08} max={0.5} step={0.01} value={sealSize}
+                    onChange={(e) => setSealSize(Number(e.target.value))} />
+                  <span className="muted small">{Math.round((sealSize / DEFAULT_SEAL_SIZE) * 100)}%</span>
+                </span>
+              )}
+            </div>
+          )}
         </div>
 
         <div className="annot-body">
@@ -307,8 +378,8 @@ export default function AnnotationEditor({ page, doc, order, initial, onSave, on
               {anns.length === 0 && <p className="muted">在左侧页面上拖拽以添加</p>}
               {anns.map((a) => (
                 <div className="annot-row" key={a.id}>
-                  <span className="badge">{TOOL_LABEL[a.type]}</span>
-                  <span className="annot-row-text">{a.text || (a.type === 'ink' ? '手绘笔迹' : a.type === 'signature' ? '签名图片' : a.type === 'mask' ? '遮挡区域' : '高亮区域')}</span>
+                  <span className="badge">{annLabel(a)}</span>
+                  <span className="annot-row-text">{a.text || (a.type === 'ink' ? '手绘笔迹' : a.type === 'signature' ? (a.stamp === 'seal' ? '公章图片' : '签名图片') : a.type === 'mask' ? '遮挡区域' : '高亮区域')}</span>
                   <button onClick={() => setAnns((prev) => prev.filter((x) => x.id !== a.id))}>删除</button>
                 </div>
               ))}
@@ -317,6 +388,18 @@ export default function AnnotationEditor({ page, doc, order, initial, onSave, on
             <p className="muted small">「遮挡」是不透明实色块；导出时该页底层文字会被一并抹除，复制 / 搜索都不会再出现被遮内容。</p>
           </div>
         </div>
+
+        {pendingUpload && (
+          <div className="signpad-wrap upload-pick">
+            <div className="section-title">该签章用作？</div>
+            <div className="btn-row">
+              <button className="btn btn-small" onClick={() => chooseUpload('signature')}>签名</button>
+              <button className="btn btn-small btn-primary" onClick={() => chooseUpload('seal')}>公章</button>
+              <button className="btn btn-small" onClick={() => setPendingUpload(null)}>取消</button>
+            </div>
+            <span className="muted small">公章将强制为正方形（标准公章大小，可整体缩放），签名保持原图比例。</span>
+          </div>
+        )}
 
         {showSignPad && (
           <div className="signpad-wrap">

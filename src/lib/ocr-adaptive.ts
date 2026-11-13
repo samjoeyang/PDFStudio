@@ -61,7 +61,17 @@ export function pickBestCandidate(
   margin = 3,
 ): { best: OcrCandidate; baseline: OcrCandidate; switched: boolean; scores: number[] } {
   if (!candidates.length) throw new Error('pickBestCandidate: 候选为空');
-  const scores = candidates.map(scoreOcrCandidate);
+  const lens = candidates.map((c) => (c.text ?? '').replace(/\s/g, '').length);
+  const maxLen = Math.max(1, ...lens);
+  // 相对长度惩罚：Tesseract 对「只抓到零星笔画」的输出常给出虚高置信度，
+  // 单看绝对分数会压过内容完整但置信度为 0 的候选（实测高难号码样本
+  // 选中 4 字符乱码而放弃 18 位号码）。内容量不足最长候选 1/3 的，
+  // 视为该路基本未识别出正文。
+  const scores = candidates.map((c, i) => {
+    const base = scoreOcrCandidate(c);
+    if (base <= -1e5) return base;
+    return lens[i] / maxLen < 0.34 ? base - 25 : base;
+  });
   let bestIdx = 0;
   let bestScore = scores[0];
   for (let i = 1; i < candidates.length; i++) {

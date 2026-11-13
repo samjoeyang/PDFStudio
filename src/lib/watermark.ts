@@ -8,9 +8,16 @@
 
 export type WatermarkKind = 'text' | 'image';
 export type WatermarkScope = 'all' | 'selected';
+/**
+ * 水印烘焙方式：
+ * - 'raster'：把带水印的页整页栅格化为图片写回，与批注/压缩共用路径（会丢失该页文字层）
+ * - 'vector'：以 PDF 原生文本/图像层叠加，保留原页面文字可选中、文件更小
+ */
+export type WatermarkMode = 'raster' | 'vector';
 
 export interface WatermarkSettings {
   enabled: boolean;
+  mode: WatermarkMode;
   kind: WatermarkKind;
   text: string;
   /** 图片水印的 dataURL */
@@ -32,6 +39,7 @@ export interface WatermarkSettings {
 
 export const DEFAULT_WATERMARK: WatermarkSettings = {
   enabled: false,
+  mode: 'raster',
   kind: 'text',
   text: '机密 · 仅供内部使用',
   fontSize: 36,

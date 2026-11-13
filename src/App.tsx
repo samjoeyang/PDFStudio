@@ -6,6 +6,7 @@ import { onOpenFiles, readFileBytes, savePdf } from './lib/platform';
 import { useHistory } from './lib/history';
 import { applyAnnotations, rasterizePdf } from './lib/raster';
 import type { PageLayers } from './lib/raster';
+import { applyVectorWatermark, loadWatermarkFont } from './lib/watermark-vector';
 import { DEFAULT_WATERMARK } from './lib/watermark';
 import type { WatermarkSettings } from './lib/watermark';
 import type { Annotation, DocItem, PageItem } from './lib/types';
@@ -252,21 +253,40 @@ export default function App() {
     const list = exportList(scope);
     if (!list.length) throw new Error('没有可用的页面');
     let bytes = await buildPdf(list, docs, optimize);
+
     const overlays = new Map<number, Annotation[]>();
     list.forEach((p, i) => {
       const a = annotations.filter((x) => x.pageId === p.id);
       if (a.length) overlays.set(i, a);
     });
-    // 水印按导出后的页序定位：scope=selected 时只对仍被选中的页生效
-    const layers: PageLayers | undefined = watermark.enabled ? {
+
+    // 水印目标页（导出后的页序）；OCR（withRaster=false）完全不叠加水印
+    const wmTarget = new Set<number>();
+    if (watermark.enabled && withRaster) {
+      list.forEach((p, i) => {
+        if (watermark.scope === 'all' || selected.has(p.id)) wmTarget.add(i);
+      });
+    }
+
+    // 会被栅格化的页：压缩模式=全部页面；否则=有批注的页。这些页由 paintLayers 画水印。
+    const rasterPages = compressMode === 'raster'
+      ? new Set(list.map((_, i) => i))
+      : new Set(overlays.keys());
+    // 矢量水印只负责「需水印且不会被栅格化」的页，避免与栅格路径重复烘焙
+    const vectorPages = [...wmTarget].filter((i) => !rasterPages.has(i));
+    const rasterWmPages = new Set([...wmTarget].filter((i) => rasterPages.has(i)));
+
+    const layers: PageLayers | undefined = wmTarget.size ? {
       watermark,
-      watermarkPages: new Set(
-        list.reduce<number[]>((acc, p, i) => {
-          if (watermark.scope === 'all' || selected.has(p.id)) acc.push(i);
-          return acc;
-        }, []),
-      ),
+      watermarkPages: rasterWmPages,
     } : undefined;
+
+    // 矢量叠加（保留文字层）必须在栅格化之前施加；栅格化不会对 vectorPages 下手
+    if (watermark.enabled && watermark.mode === 'vector' && vectorPages.length) {
+      const fontBytes = watermark.kind === 'text' ? await loadWatermarkFont() : undefined;
+      bytes = await applyVectorWatermark(bytes, watermark, vectorPages, fontBytes);
+    }
+
     if (withRaster && compressMode === 'raster') {
       bytes = await rasterizePdf(bytes, { dpi, quality }, overlays,
         (done, total) => setStatus(`图像压缩中 ${done}/${total} 页`), layers);
@@ -468,7 +488,7 @@ export default function App() {
 
           <div className="panel-section tips">
             <div className="section-title">提示</div>
-            <p>双击页面卡片可添加批注与签名（{annotations.length} 条）</p>
+            <p>双击页面卡片可添加批注与签章（{annotations.length} 条）</p>
             <p>Ctrl / ⌘ + Z 撤销，Shift 连选，Delete 删除</p>
             <p>只导出选中页即可完成拆分提取</p>
           </div>

@@ -25,8 +25,8 @@ export interface OcrSettings {
   /** 多栏文档按坐标还原阅读顺序 */
   layout: boolean;
   /**
-   * 自动比对多种预处理路线并按质量选优（默认开启）。
-   * 真实照片的最优预处理因图而异，关闭可让多页识别快约 2 倍，但准确率会回退。
+   * 自动比对「预处理 × 纠偏 × 版面模式」多条路线并按质量选优（默认开启）。
+   * 真实照片的最优路线因图而异，关闭可让多页识别快约 4 倍，但准确率会回退。
    */
   adaptive?: boolean;
   /**
@@ -167,8 +167,8 @@ export async function recognizePages(
       const scale = Math.min(settings.dpi / 72, Math.sqrt(MAX_CANVAS_AREA / area));
       const canvas = await renderPageToCanvas(doc, n, scale);
 
-      const setParams = () => worker.setParameters({
-        tessedit_pageseg_mode: PSM[settings.psm],
+      const setParams = (psm: OcrPsm) => worker.setParameters({
+        tessedit_pageseg_mode: PSM[psm],
         preserve_interword_spaces: '1',
         user_defined_dpi: String(Math.round(scale * 72)),
         // 显式设空串以清除上一次设置的白名单（worker 参数会跨调用保留）
@@ -176,9 +176,11 @@ export async function recognizePages(
       });
 
       // 单条候选：预处理 → 识别 → 版面重排 → 后纠错，产出用于打分的最终文本
-      const makePass = async (mode: PreprocessMode, label: string) => {
-        const { canvas: proc, result: prep } = processCanvas(canvas, mode);
-        await setParams();
+      const makePass = async (
+        mode: PreprocessMode, psm: OcrPsm, deskew: boolean, label: string,
+      ) => {
+        const { canvas: proc, result: prep } = processCanvas(canvas, mode, { deskew });
+        await setParams(psm);
         const { data } = await worker.recognize(proc.toDataURL('image/png'), {},
           { blocks: true, text: true, hocr: false, tsv: false });
         const words = wordsFromResult(data);
@@ -194,22 +196,29 @@ export async function recognizePages(
           : correctOcrText(normalizeOcrText(raw));
         return {
           data, proc, prep, words, columns, text,
-          key: `${label}/${prep.stats.upscale}x→${prep.applied}`,
+          key: `${label}/${prep.stats.upscale}x→${prep.applied}/${psm}`,
         };
       };
 
       onProgress?.(i, pageNumbers.length, `正在识别第 ${n} 页（自适应增强）`);
-      // 首条候选永远是用户所选的预处理模式，保证清晰输入的行为可预期
-      const passes = [await makePass(settings.preprocess, settings.preprocess)];
+      // 首条候选永远是用户所选的预处理模式与版面模式，保证清晰输入行为可预期
+      const passes = [await makePass(settings.preprocess, settings.psm, true, settings.preprocess)];
       if (settings.preprocess === 'auto' && settings.adaptive !== false) {
-        // 真实照片的最优预处理因图而异：白底扫描件需要二值化，木纹背景怕二值化，
-        // 单一启发式与「仅低置信度才重试」都覆盖不到（有的错版置信度高达 81%）。
-        // 补跑未命中的路线，用不依赖参考答案的打分函数保守选优。
-        const extra = (['binary', 'gray'] as PreprocessMode[])
+        // 最优路线因图而异：白底扫描件需要二值化、木纹背景怕二值化、光照渐变
+        // 的二值化会抹掉暗区文字，此时只有「原图 none」能救回内容。
+        const extra = (['none', 'binary', 'gray'] as PreprocessMode[])
           .filter((m) => m !== passes[0].prep.applied);
         for (const m of extra) {
           onProgress?.(i, pageNumbers.length, `第 ${n} 页自适应比对（${m}）…`);
-          passes.push(await makePass(m, m));
+          passes.push(await makePass(m, settings.psm, true, m));
+        }
+        // 不纠偏兜底：投影法估角在渐变 / 纹理背景上可能误判，旋转会毁掉正文
+        onProgress?.(i, pageNumbers.length, `第 ${n} 页自适应比对（不纠偏）…`);
+        passes.push(await makePass('none', settings.psm, false, 'none-nodeskew'));
+        // 单栏版面：手机翻拍 / 纹理背景通常比整块文字更稳
+        if (settings.psm !== 'column') {
+          onProgress?.(i, pageNumbers.length, `第 ${n} 页自适应比对（单栏）…`);
+          passes.push(await makePass('auto', 'column', true, 'auto-column'));
         }
       }
       let pass = passes[0];

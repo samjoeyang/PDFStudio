@@ -32,6 +32,8 @@ export interface Annotation {
   text?: string;
   image?: string;
   strokes?: InkStroke[];
+  /** 仅 type==='signature' 时有效：'signature' 为手写/上传签名，'seal' 为上传公章（强制正方形） */
+  stamp?: 'signature' | 'seal';
 }
 
 export interface OcrWordBox {

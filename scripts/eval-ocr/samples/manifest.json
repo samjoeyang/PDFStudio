@@ -75,31 +75,60 @@
     "ref": "id-number-hard.ref.txt"
   },
   {
-    "id": "real-merged",
-    "file": "real-merged.jpg",
+    "id": "hard-wood",
+    "file": "hard-wood.jpg",
     "lang": "chi+eng",
     "preprocess": "auto",
-    "psm": "column",
-    "ref": "real-merged.ref.txt",
-    "detect": "card"
+    "psm": "block",
+    "ref": "hard-wood.ref.txt"
   },
   {
-    "id": "real-licailan",
-    "file": "real-licailan.jpg",
+    "id": "hard-wood-col",
+    "file": "hard-wood.jpg",
     "lang": "chi+eng",
     "preprocess": "auto",
     "psm": "column",
-    "ref": "real-licailan.ref.txt",
-    "detect": "card"
+    "ref": "hard-wood.ref.txt"
   },
   {
-    "id": "real-yangxiling",
-    "file": "real-yangxiling.jpg",
+    "id": "hard-shade",
+    "file": "hard-shade.jpg",
+    "lang": "chi+eng",
+    "preprocess": "auto",
+    "psm": "block",
+    "ref": "hard-shade.ref.txt"
+  },
+  {
+    "id": "hard-shade-col",
+    "file": "hard-shade.jpg",
     "lang": "chi+eng",
     "preprocess": "auto",
     "psm": "column",
-    "ref": "real-yangxiling.ref.txt",
-    "detect": "card"
+    "ref": "hard-shade.ref.txt"
+  },
+  {
+    "id": "hard-skew",
+    "file": "hard-skew.jpg",
+    "lang": "chi+eng",
+    "preprocess": "auto",
+    "psm": "block",
+    "ref": "hard-skew.ref.txt"
+  },
+  {
+    "id": "hard-dim",
+    "file": "hard-dim.jpg",
+    "lang": "chi+eng",
+    "preprocess": "auto",
+    "psm": "block",
+    "ref": "hard-dim.ref.txt"
+  },
+  {
+    "id": "hard-small",
+    "file": "hard-small.jpg",
+    "lang": "chi+eng",
+    "preprocess": "auto",
+    "psm": "block",
+    "ref": "hard-small.ref.txt"
   },
   {
     "id": "id-form",

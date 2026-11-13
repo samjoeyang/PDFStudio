@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>PDF Studio · 本地优先的桌面 PDF 工作台</title>
-  <meta name="description" content="PDF Studio 是一款本地优先、离线可用的桌面 PDF 工具：合并重排、批注签名、水印、文字提取与 OCR、身份证排版、压缩优化，跨 macOS / Windows / Linux。" />
+  <meta name="description" content="PDF Studio 是一款本地优先、离线可用的桌面 PDF 工具：合并重排、批注签名与公章盖章、矢量 / 栅格双模式水印、文字提取与离线 OCR、身份证排版、压缩优化，跨 macOS / Windows / Linux。" />
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%234f46e5'/%3E%3Ctext x='32' y='44' font-size='38' font-family='Arial' font-weight='700' fill='white' text-anchor='middle'%3EP%3C/text%3E%3C/svg%3E" />
   <link rel="stylesheet" href="assets/style.css" />
   <!-- Google Tag Manager -->
@@ -26,7 +26,7 @@
         "@id": "https://samjoeyang.github.io/PDFStudio#organization",
         "name": "PDF Studio",
         "url": "https://samjoeyang.github.io/PDFStudio/",
-        "description": "PDF Studio 是一款本地优先、离线可用的开源桌面 PDF 工作台，支持合并重排、批注签名、水印、文字提取与 OCR、身份证排版、压缩优化，跨 macOS / Windows / Linux。",
+        "description": "PDF Studio 是一款本地优先、离线可用的开源桌面 PDF 工作台，支持合并重排、批注签名与公章盖章、矢量 / 栅格双模式水印、文字提取与离线 OCR、身份证排版、压缩优化，跨 macOS / Windows / Linux。",
         "sameAs": [
           "https://github.com/samjoeyang/PDFStudio",
           "https://github.com/sponsors/samjoeyang"
@@ -65,13 +65,13 @@
       <div class="hero-inner">
         <div class="badge">🛡️ 本地优先 · 文件永不离开你的电脑</div>
         <h1>PDF Studio</h1>
-        <p class="lead">本地优先的桌面 PDF 工作台。合并、重排、批注签名、加水印、文字提取与 OCR、身份证排版、压缩优化——所有处理都在本机完成，离线也能用。</p>
+        <p class="lead">本地优先的桌面 PDF 工作台。合并、重排、批注与签章、矢量 / 栅格双模式水印、文字提取与离线 OCR、身份证排版、压缩优化——所有处理都在本机完成，离线也能用。</p>
         <div class="hero-cta">
           <a class="btn-primary" href="#download">立即下载</a>
           <a class="btn-ghost" href="https://github.com/samjoeyang/PDFStudio" target="_blank" rel="noopener">在 GitHub 查看</a>
         </div>
         <ul class="hero-points">
-          <li>🌐 离线 OCR，内置中英文识别引擎</li>
+          <li>🌐 离线 OCR，自适应比对多条识别路线 + 中文纠错</li>
           <li>🍎 同时支持 Apple 芯片与 Intel Mac</li>
           <li>🪟 Windows 32/64 位 · 🐧 Linux 全平台</li>
         </ul>
@@ -90,18 +90,18 @@
         </div>
         <div class="card">
           <div class="card-ico">✍️</div>
-          <h3>批注与签名</h3>
-          <p>双击页面即可添加批注、手绘签名与标记，按页面独立保存，导出时自动叠加到 PDF。</p>
+          <h3>批注与签章</h3>
+          <p>双击页面添加批注、手绘签名或上传签章，可选择「签名 / 公章」类型；公章自动锁定标准正方形并支持整体缩放，按页独立保存，导出时叠加到 PDF。</p>
         </div>
         <div class="card">
           <div class="card-ico">💧</div>
           <h3>水印</h3>
-          <p>可设置文字/图片水印，支持全部页或仅选中页，带实时预览，导出时精准定位。</p>
+          <p>文字 / 图片水印，支持全部页或仅选中页、平铺 / 单幅、透明度与旋转，实时预览。两种烘焙方式：<b>矢量</b>（PDF 原生层叠加，保留文字可选中可搜索、文件更小）与<b>栅格化</b>（与压缩 / 批注共用路径）。</p>
         </div>
         <div class="card">
           <div class="card-ico">🔍</div>
           <h3>文字提取与 OCR</h3>
-          <p>内置 tesseract.js 与中英文语言包，完全离线运行，把扫描件 / 图片识别为可搜索、可复制的文字层，无需联网。</p>
+          <p>内置 tesseract.js 与中英文语言包，完全离线运行。新增自适应多路线比对（预处理 / 纠偏 / 版面模式）与中文标点、数字编码纠错，把扫描件识别为可搜索、可复制的文字层，无需联网。</p>
         </div>
         <div class="card">
           <div class="card-ico">🪪</div>
@@ -166,7 +166,9 @@
         <ul>
           <li>把多个 PDF 直接拖入主窗口即可合并，页面网格顺序 = 导出顺序。</li>
           <li>框选页面后点击「导出选中」即可拆分/提取；Shift 连选、Ctrl/⌘ 多选。</li>
-          <li>双击页面卡片添加批注与签名；Delete 删除选中页。</li>
+          <li>双击页面卡片添加批注与签章（签名 / 公章）；Delete 删除选中页。</li>
+          <li>水印选「矢量」模式时，导出后页面文字仍可选中 / 搜索且体积更小；「栅格化」则整页转为图片，与压缩、批注兼容。</li>
+          <li>扫描件识别可在设置中开启「自适应比对多种识别路线」提升准确率，多页文档会更耗时。</li>
           <li>导出时可开启「优化体积」与「图像重编码压缩」减小文件。</li>
         </ul>
       </div>

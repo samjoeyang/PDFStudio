@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { loadPdfJsDoc, renderPageToCanvas } from '../lib/thumb';
 import { drawWatermark, DEFAULT_WATERMARK } from '../lib/watermark';
-import type { WatermarkSettings, WatermarkKind, WatermarkScope } from '../lib/watermark';
+import type { WatermarkSettings, WatermarkKind, WatermarkScope, WatermarkMode } from '../lib/watermark';
 
 interface PreviewSource { bytes: Uint8Array; pageIndex: number }
 
@@ -16,6 +16,10 @@ interface Props {
 const KINDS: { id: WatermarkKind; label: string }[] = [
   { id: 'text', label: '文字水印' },
   { id: 'image', label: '图片水印' },
+];
+const MODES: { id: WatermarkMode; label: string }[] = [
+  { id: 'raster', label: '栅格化' },
+  { id: 'vector', label: '矢量' },
 ];
 const SCOPES: { id: WatermarkScope; label: string }[] = [
   { id: 'all', label: '全部页面' },
@@ -93,6 +97,15 @@ export default function WatermarkPanel({ settings, onChange, preview, selectedCo
                   onClick={() => patch('kind', k.id)}>{k.label}</button>
               ))}
             </div>
+            <label className="wm-sub">烘焙方式
+              <span className="muted small">栅格化会丢失文字层（与压缩 / 批注兼容）；矢量保留文字可搜索、文件更小</span>
+            </label>
+            <div className="btn-row wm-kinds">
+              {MODES.map((m) => (
+                <button key={m.id} className={`btn btn-small${settings.mode === m.id ? ' is-active' : ''}`}
+                  onClick={() => patch('mode', m.id)}>{m.label}</button>
+              ))}
+            </div>
 
             {settings.kind === 'text' ? (
               <>
@@ -168,8 +181,9 @@ export default function WatermarkPanel({ settings, onChange, preview, selectedCo
                 : <p className="muted small">{error || (preview ? '正在渲染预览…' : '导入 PDF 后可预览效果')}</p>}
             </div>
             <p className="muted small wm-note">
-              水印在导出时烘焙进页面：带水印的页会转为高清图像，文字层不再保留；
-              工作区内的文字提取 / OCR 仍读原始内容。压缩模式与批注会在同一次栅格化里一起处理。
+              {settings.mode === 'vector'
+                ? '矢量模式：水印以 PDF 原生文本 / 图像层叠加，页面原有文字仍可选中、可搜索，且文件更小；仅当该页有批注或开启了「图像重编码压缩」时才会整页栅格化。'
+                : '栅格化模式：带水印的页会转为高清图像，文字层不再保留（与压缩、批注共用路径）；工作区内的文字提取 / OCR 仍读原始内容。'}
             </p>
           </div>
         </div>

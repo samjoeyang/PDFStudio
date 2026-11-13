@@ -198,7 +198,7 @@ export default function OcrPanel({ baseBytes, pageCount, scopeLabel, onClose, no
                 <label className="checkline">
                   <input type="checkbox" checked={settings.adaptive !== false} disabled={running}
                     onChange={(e) => patch('adaptive', e.target.checked)} />
-                  自适应比对多种预处理（更准，多页会慢约 2 倍）
+                  自适应比对多种识别路线（更准，多页会慢约 4 倍）
                 </label>
                 <label className="checkline">
                   <input type="checkbox" checked={settings.layout} disabled={running}

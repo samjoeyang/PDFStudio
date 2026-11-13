@@ -343,6 +343,12 @@ button { font-family: inherit; }
   border: 1px dashed #c9d0da; border-radius: 8px; background: #fff;
   cursor: crosshair; touch-action: none;
 }
+.stamp-toggle { display: flex; align-items: center; gap: 8px; flex-basis: 100%; }
+.stamp-toggle .muted { margin-right: 2px; }
+.seal-size { display: inline-flex; align-items: center; gap: 6px; }
+.seal-size input[type="range"] { width: 130px; }
+.upload-pick { background: #f5f8ff; }
+.upload-pick .btn-primary { font-weight: 500; }
 
 /* 文字提取 / OCR 面板 */
 .ocr-controls { padding: 14px 22px; border-bottom: 1px solid #e9ecf0; }

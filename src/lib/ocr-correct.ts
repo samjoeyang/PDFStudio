@@ -59,8 +59,11 @@ const WORD_FIXES: Record<string, string> = {
   果面: '桌面',
   着面: '桌面',
   泉面: '桌面',
-  // 台 → 合（「工作台」→「工作合」）
+  // 台 → 合 / 骆（「工作台」→「工作合」「工作骆」，降质小字下常见）
   工作合: '工作台',
+  工作骆: '工作台',
+  // 签 → 等（「签发机关」→「等发机关」，证件字段标签高频错识）
+  等发机关: '签发机关',
   // 批 → 吉、印 → 县（「批注」「水印」）
   吉注: '批注',
   水县: '水印',
@@ -103,6 +106,38 @@ function fixAlnumConfusion(text: string): string {
     .replace(/[Oo](?=\d)/g, '0')
     .replace(/(?<=\d)[lI|]/g, '1')
     .replace(/[lI|](?=\d)/g, '1');
+}
+
+/**
+ * 编码串内的 O/0、I/1 混淆。
+ * 只处理「以数字开头的长字母数字串」（证件号、税号、发票号、编号），
+ * 且串内至少 3 位数字；纯字母缩略词（PDF / STUDIO）不以数字开头，不受影响。
+ */
+function fixCodeAlnum(text: string): string {
+  return text.replace(/\d[A-Z0-9]{7,}/g, (m) =>
+    (m.match(/\d/g) ?? []).length >= 3
+      ? m.replace(/O/g, '0').replace(/[Il]/g, '1')
+      : m,
+  );
+}
+
+/**
+ * 中文语境标点归一：Tesseract 常把字段间空白 / 噪点识别成孤立引号或逗号，
+ * 也会把全角括号输出成 〈 ( 等形态。只处理在简体中文里不成立的形态。
+ */
+function normalizeCjkPunctuation(text: string): string {
+  if (!/[\u4e00-\u9fff]/.test(text)) return text;
+  let out = text;
+  // 弯引号必须成对；只出现一侧时必是噪声（真实中文引号几乎总成对）
+  const left = (out.match(/“/g) ?? []).length;
+  const right = (out.match(/”/g) ?? []).length;
+  if (left === 0 || right === 0) out = out.replace(/[“”]/g, '');
+  // 长编号后紧跟的逗号 + 空白：逗号是字段分隔空白被误识
+  out = out.replace(/(\d{6,})，(?=\s)/g, '$1');
+  // 中文语境的括号 / 冒号形态：「甲方〈盖章) :」→「甲方（盖章）：」
+  out = out.replace(/([\u4e00-\u9fff])\s*[〈<(]/g, '$1（');
+  out = out.replace(/[〉>)]\s*:/g, '）：');
+  return out;
 }
 
 /** 常见异体字归一（简体中文语境中绝不该出现的变体） */
@@ -165,8 +200,14 @@ export function correctOcrText(text: string): string {
     out = out.replace(re, to);
   }
 
-  // 3. 字母数字混淆
+  // 3. 字母数字混淆（紧邻数字）
   out = fixAlnumConfusion(out);
+
+  // 3.5 编码串内的 O/0、I/1（不紧邻数字，但同属一个证件号 / 税号串）
+  out = fixCodeAlnum(out);
+
+  // 3.6 中文语境标点归一（孤立引号、括号、字段分隔逗号）
+  out = normalizeCjkPunctuation(out);
 
   // 4. 货币符号统一：中文语境的半角 ¥ 一律视为人民币全角 ￥，并去掉其后空格
   out = out.replace(/¥\s*/g, '￥');

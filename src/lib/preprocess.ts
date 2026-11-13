@@ -284,10 +284,19 @@ export function estimateSkew(gray: GrayImage): number {
     const s = score(a);
     if (s > bestScore) { bestScore = s; bestAngle = a; }
   }
-  for (let a = bestAngle - 0.4; a <= bestAngle + 0.4; a += 0.2) {
+  // 精细化必须在「粗搜结果」的固定邻域内进行。若把上界写成 bestAngle + 0.4，
+  // 循环体内刷新 bestAngle 会同步抬高上界，角度可一路爬到 20° 以上，
+  // 把带渐变/纹理背景的清晰文档旋成乱码（实测阴影样本被算出 21.8°）。
+  const coarse = bestAngle;
+  for (let a = coarse - 0.4; a <= coarse + 0.4; a += 0.2) {
     const s = score(a);
     if (s > bestScore) { bestScore = s; bestAngle = a; }
   }
+  // 硬上限：超出粗搜范围的调精结果一律不采信
+  bestAngle = Math.max(-5, Math.min(5, bestAngle));
+  // 边界饱和说明「最优」是搜索区间端点而非真实峰：常见于渐变/条纹背景，
+  // 投影方差随角度单调上升。此时强行旋转反而把正文档旋歪，不如不纠偏。
+  if (Math.abs(bestAngle) >= 4.9) return 0;
   return Math.abs(bestAngle) < 0.5 ? 0 : Math.round(bestAngle * 10) / 10;
 }
 
