@@ -4,6 +4,17 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>PDF Studio</title>
+    <!-- 旧版 WKWebView（macOS 12 / Safari 16 内核）没有 Promise.withResolvers，
+         pdfjs-dist 4.x 在模块初始化与解析文档时都会用到。必须在任何 ES module 之前同步注入。 -->
+    <script>
+      if (typeof Promise.withResolvers !== 'function') {
+        Promise.withResolvers = function () {
+          var resolve, reject;
+          var promise = new Promise(function (res, rej) { resolve = res; reject = rej; });
+          return { promise: promise, resolve: resolve, reject: reject };
+        };
+      }
+    </script>
     <!-- Google Tag Manager -->
     <script async src="https://www.googletagmanager.com/gtm.js?id=GTM-TJ9KFBFR"></script>
     <script>
