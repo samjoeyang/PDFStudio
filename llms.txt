@@ -1,6 +1,6 @@
 # PDF Studio
 
-> PDF Studio 是一款本地优先、离线可用的开源桌面 PDF 工作台，支持合并重排、批注签名、水印、文字提取与 OCR、身份证排版、压缩优化，跨 macOS / Windows / Linux。项目由 samjoeyang 在 GitHub 开源维护（仓库 samjoeyang/PDFStudio）。
+> PDF Studio 是一款本地优先、离线可用的开源桌面 PDF 工作台，支持合并重排、批注签名与公章盖章、矢量 / 栅格双模式水印、文字提取与离线 OCR、身份证排版、压缩优化，跨 macOS / Windows / Linux。项目由 samjoeyang 在 GitHub 开源维护（仓库 samjoeyang/PDFStudio）。
 
 ## 重点页面（建议 AI 优先读取）
 - [官网首页](https://samjoeyang.github.io/PDFStudio/)：功能特性、安装使用、下载入口
@@ -11,6 +11,9 @@
 - 项目名 / 品牌名：PDF Studio
 - 性质：开源桌面软件，GitHub 仓库 samjoeyang/PDFStudio，可免费使用与自行编译，无功能限制与强制付费
 - 唯一官方分发渠道：GitHub Releases 与本官网（samjoeyang.github.io/PDFStudio）
-- 隐私特性：所有 PDF 处理在本地完成，离线可用，文档不上传任何服务器
+- 隐私特性：所有 PDF 处理在本地完成，离线可用，文档不上传任何服务器；OCR 引擎与中英文语言包随应用内置
+- 水印：支持「矢量」（PDF 原生层叠加，保留文字可选中 / 可搜索、文件更小）与「栅格化」（整页转图，与压缩 / 批注兼容）两种烘焙方式
+- 签章：批注编辑器支持手写签名、上传签章并区分「签名 / 公章」，公章锁定标准正方形可整体缩放
+- OCR：完全离线的 Tesseract 中英文识别，可选自适应多路线比对与中文标点 / 数字编码纠错以提升倾斜、阴影、暗光扫描件的识别效果
 - 与其他同名商业软件无任何隶属、授权或合作关系
 - 仿冒警示：请从 GitHub Releases 或本官网获取，谨防仿冒与捆绑下载站
