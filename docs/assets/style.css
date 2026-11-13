@@ -162,6 +162,28 @@ a:hover { text-decoration: underline; }
 .dl-alt:not([href]), .dl-alt[href="#"] { display: none; }
 .dl-fallback { text-align: center; color: var(--fg-soft); margin-top: 22px; }
 
+/* Telegram community (discuss) */
+.tg-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); gap: 18px; }
+.tg-card {
+  display: flex; align-items: center; gap: 20px; background: var(--bg);
+  border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 20px; box-shadow: var(--shadow);
+}
+.tg-card img {
+  flex: none; width: 160px; height: 160px; border-radius: 12px;
+  border: 1px solid var(--border); background: #fff; padding: 6px; display: block;
+}
+.tg-label { color: var(--brand-dark); font-size: 13px; font-weight: 700; }
+.tg-info h3 { margin: 2px 0 6px; font-size: 17px; }
+.tg-info p { margin: 0 0 12px; color: var(--fg-soft); font-size: 14px; }
+.tg-btn {
+  display: inline-block; background: var(--brand); color: #fff;
+  padding: 8px 20px; border-radius: 999px; font-weight: 600; font-size: 14px;
+}
+.tg-btn:hover { background: var(--brand-dark); text-decoration: none; }
+.tg-info .tg-hint { margin: 8px 0 0; font-size: 12px; }
+.links-title { text-align: center; color: var(--fg-soft); font-size: 16px; margin: 34px 0 16px; }
+
 /* Links (discuss / sponsor) */
 .links { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
 .link-card {
@@ -194,4 +216,6 @@ a:hover { text-decoration: underline; }
   .hero h1 { font-size: 38px; }
   .nav-links { display: none; }
   .section { padding: 44px 18px; }
+  .tg-card { flex-direction: column; text-align: center; gap: 14px; }
+  .tg-grid { grid-template-columns: 1fr; }
 }

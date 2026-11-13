@@ -116,6 +116,8 @@ git tag v0.1.0 && git push origin v0.1.0
 
 ## 💬 讨论组
 
+- 💬 [Telegram 官方群组](https://t.me/+3KH9Cn8-yIQ1ZDI1) —— 与开发者和其他用户交流
+- 📢 [Telegram 官方频道](https://t.me/+KN45JemRvb5kMmNl) —— 版本更新与开发动态
 - 💬 [GitHub Discussions](https://github.com/samjoeyang/PDFStudio/discussions) —— 提问与建议
 - 🐞 [Issues](https://github.com/samjoeyang/PDFStudio/issues) —— 上报 Bug / 功能请求
 - ⭐ [项目仓库](https://github.com/samjoeyang/PDFStudio)
