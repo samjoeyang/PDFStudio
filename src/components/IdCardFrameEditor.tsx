@@ -2,6 +2,8 @@ import { useLayoutEffect, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent, WheelEvent as ReactWheelEvent } from 'react';
 import { containLayout, moveCrop, resizeCrop } from '../lib/idcard';
 import type { CropRect, IdCardSource } from '../lib/idcard';
+import { useZoomPan } from '../lib/useZoomPan';
+import ZoomControls from './ZoomControls';
 
 interface Props {
   card: IdCardSource;
@@ -20,12 +22,24 @@ interface DragState {
  * 原图取景框编辑器：整张照片按 contain 显示，半透明遮罩外只留 1.5852 比例的高亮框。
  * 框的位置就是 PDF 里裁出来的区域，拖动框 / 拖右下角 / 点击框外即可修正，
  * 不需要再凭成品预览反推证件在哪里。
+ * 额外提供「移动」模式：开启后滚轮/拖拽变为视图缩放平移，便于放大查看取景是否精准。
  */
 export default function IdCardFrameEditor({ card, onChange }: Props) {
-  const stageRef = useRef<HTMLDivElement>(null);
+  const stageRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const dragRef = useRef<DragState | null>(null);
   const [layout, setLayout] = useState<Layout>({ W: 0, H: 0, ox: 0, oy: 0, dw: 0, dh: 0 });
+  const [panMode, setPanMode] = useState(false);
+
+  // 视图缩放/平移（仅「移动」模式生效，避免与取景框编辑冲突）
+  const { vpRef, view, panning, fit, zoomIn, zoomOut, startPan } = useZoomPan(
+    { w: layout.W || 1, h: layout.H || 1 },
+    panMode,
+  );
+  const setRefs = (el: HTMLDivElement | null) => {
+    stageRef.current = el;
+    vpRef.current = el;
+  };
 
   useLayoutEffect(() => {
     const stage = stageRef.current;
@@ -60,6 +74,7 @@ export default function IdCardFrameEditor({ card, onChange }: Props) {
   const fh = card.crop.h * layout.dh;
 
   const onStageDown = (e: ReactPointerEvent<HTMLDivElement>) => {
+    if (panMode) { startPan(e); return; }
     if (!layout.dw || !stageRef.current) return;
     const r = stageRef.current.getBoundingClientRect();
     const nx = (e.clientX - r.left - layout.ox) / layout.dw;
@@ -79,6 +94,7 @@ export default function IdCardFrameEditor({ card, onChange }: Props) {
 
   const onHandleDown = (e: ReactPointerEvent<HTMLSpanElement>) => {
     e.stopPropagation();
+    if (panMode) { startPan(e); return; }
     if (!stageRef.current) return;
     stageRef.current.setPointerCapture(e.pointerId);
     dragRef.current = { mode: 'resize', sx: e.clientX, sy: e.clientY, crop: { ...card.crop } };
@@ -98,30 +114,54 @@ export default function IdCardFrameEditor({ card, onChange }: Props) {
   const onUp = () => { dragRef.current = null; };
 
   const onWheel = (e: ReactWheelEvent<HTMLDivElement>) => {
+    if (panMode) return; // 视图平移模式：滚轮交给 useZoomPan 处理
     if (!layout.dw) return;
     const factor = e.deltaY > 0 ? 1.08 : 0.92;
     onChange(resizeCrop(card.crop, card.crop.w * factor, card.base.width, card.base.height, 'center'));
   };
 
+  const togglePan = () => {
+    const next = !panMode;
+    setPanMode(next);
+    fit(); // 进入/退出视图平移都复位到完整居中，保证取景框可见
+  };
+
   return (
     <div className="idcard-frame-wrap">
-      <div className="idcard-frame-stage" ref={stageRef}
+      <div
+        className={`idcard-frame-stage${panMode ? ' pan-on' : ''}${panning ? ' panning' : ''}`}
+        ref={setRefs}
         onPointerDown={onStageDown} onPointerMove={onMove}
-        onPointerUp={onUp} onPointerCancel={onUp} onWheel={onWheel}>
-        <canvas ref={canvasRef} className="idcard-frame-photo" />
-        {fw > 0 && (
-          <div className="idcard-frame" style={{ left: fx, top: fy, width: fw, height: fh }}>
-            <span className="idcard-frame-third v1" />
-            <span className="idcard-frame-third v2" />
-            <span className="idcard-frame-third h1" />
-            <span className="idcard-frame-third h2" />
-            <span className="idcard-frame-corner nw" />
-            <span className="idcard-frame-corner ne" />
-            <span className="idcard-frame-corner sw" />
-            <span className="idcard-frame-handle se" title="拖动缩放取景框"
-              onPointerDown={onHandleDown} />
-          </div>
-        )}
+        onPointerUp={onUp} onPointerCancel={onUp} onWheel={onWheel}
+      >
+        <div
+          className="idcard-frame-inner"
+          style={{
+            width: layout.W,
+            height: layout.H,
+            transform: `translate(${view.pan.x}px, ${view.pan.y}px) scale(${view.zoom})`,
+          }}
+        >
+          <canvas ref={canvasRef} className="idcard-frame-photo" />
+          {fw > 0 && (
+            <div className="idcard-frame" style={{ left: fx, top: fy, width: fw, height: fh }}>
+              <span className="idcard-frame-third v1" />
+              <span className="idcard-frame-third v2" />
+              <span className="idcard-frame-third h1" />
+              <span className="idcard-frame-third h2" />
+              <span className="idcard-frame-corner nw" />
+              <span className="idcard-frame-corner ne" />
+              <span className="idcard-frame-corner sw" />
+              <span className="idcard-frame-handle se" title="拖动缩放取景框"
+                onPointerDown={onHandleDown} />
+            </div>
+          )}
+        </div>
+        <button type="button"
+          className={`idcard-pan-toggle${panMode ? ' is-on' : ''}`}
+          onClick={togglePan}
+          title="开启后可拖动平移视图（放大后看细节）；关闭回到裁剪编辑">移动</button>
+        <ZoomControls zoom={view.zoom} onZoomIn={zoomIn} onZoomOut={zoomOut} onFit={fit} />
       </div>
       <div className="idcard-frame-tip">
         白框内即最终进入 PDF 的区域 · 拖动框可移动 · 拖右下角或滚轮可缩放 · 点击框外可重新居中

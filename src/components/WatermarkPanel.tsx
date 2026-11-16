@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { loadPdfJsDoc, renderPageToCanvas } from '../lib/thumb';
 import { drawWatermark, DEFAULT_WATERMARK } from '../lib/watermark';
 import type { WatermarkSettings, WatermarkKind, WatermarkScope, WatermarkMode } from '../lib/watermark';
+import { useZoomPan } from '../lib/useZoomPan';
+import ZoomControls from './ZoomControls';
 
 interface PreviewSource { bytes: Uint8Array; pageIndex: number }
 
@@ -32,6 +34,8 @@ export default function WatermarkPanel({ settings, onChange, preview, selectedCo
   const fileRef = useRef<HTMLInputElement>(null);
   const [ready, setReady] = useState(false);
   const [error, setError] = useState('');
+  const [contentSize, setContentSize] = useState({ w: 0, h: 0 });
+  const { vpRef, view, fit, zoomIn, zoomOut, startPan } = useZoomPan(contentSize);
 
   const patch = <K extends keyof WatermarkSettings>(key: K, value: WatermarkSettings[K]) =>
     onChange({ ...settings, [key]: value });
@@ -62,7 +66,13 @@ export default function WatermarkPanel({ settings, onChange, preview, selectedCo
     if (!ctx) return;
     ctx.drawImage(base, 0, 0);
     void drawWatermark(view, settings);
+    setContentSize({ w: view.width, h: view.height });
   }, [settings, ready]);
+
+  // 预览就绪且已知画布尺寸后自动适应一次
+  useEffect(() => {
+    if (ready && contentSize.w) requestAnimationFrame(fit);
+  }, [ready, contentSize.w, contentSize.h, fit]);
 
   const upload = (file?: File) => {
     if (!file) return;
@@ -175,10 +185,20 @@ export default function WatermarkPanel({ settings, onChange, preview, selectedCo
 
           <div className="wm-preview-wrap">
             <div className="section-title">效果预览 <span className="muted small">· 第 1 页 · 与导出一致</span></div>
-            <div className="wm-preview">
-              {ready
-                ? <canvas ref={viewRef} />
-                : <p className="muted small">{error || (preview ? '正在渲染预览…' : '导入 PDF 后可预览效果')}</p>}
+            <div className="wm-preview" ref={vpRef}>
+              {ready ? (
+                <canvas
+                  ref={viewRef}
+                  style={{
+                    transform: `translate(${view.pan.x}px, ${view.pan.y}px) scale(${view.zoom})`,
+                    transformOrigin: '0 0',
+                  }}
+                  onPointerDown={startPan}
+                />
+              ) : (
+                <p className="muted small">{error || (preview ? '正在渲染预览…' : '导入 PDF 后可预览效果')}</p>
+              )}
+              {ready && <ZoomControls zoom={view.zoom} onZoomIn={zoomIn} onZoomOut={zoomOut} onFit={fit} />}
             </div>
             <p className="muted small wm-note">
               {settings.mode === 'vector'

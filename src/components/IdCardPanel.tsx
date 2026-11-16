@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { DragEvent, PointerEvent as ReactPointerEvent } from 'react';
+import type { DragEvent } from 'react';
 import {
-  autoGeometry, buildIdCardPdf, CARD_PX_H, CARD_PX_W, DEFAULT_OPTIONS,
+  autoGeometry, buildIdCardPdf, DEFAULT_OPTIONS,
   detectSideByOcr, extractIdNumber, geometryAt, guessSideFromName, layoutPlacements,
-  loadImageFile, minimalCrop, panCrop, renderCardCanvas, resultHalfEmpty,
+  loadImageFile, minimalCrop, renderCardCanvas, resultHalfEmpty,
   SIDE_LABEL, sortCards, clampAngle, orthoSteps, withAngle, zoomCrop,
 } from '../lib/idcard';
 import type { CardSide, IdCardOptions, IdCardSource, Rotation } from '../lib/idcard';
 import IdCardFrameEditor from './IdCardFrameEditor';
+import IdCardResultView from './IdCardResultView';
 import { savePdf } from '../lib/platform';
 
 const uid = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
@@ -20,29 +21,6 @@ interface Props {
   onAddToWorkspace: (name: string, bytes: Uint8Array) => Promise<void>;
 }
 
-interface DragState {
-  id: string;
-  x: number;
-  y: number;
-  cropX: number;
-  cropY: number;
-  w: number;
-  h: number;
-}
-
-/** 预览直接绘制 renderCardCanvas 的结果，与 PDF 用的是同一份裁剪几何 */
-function CardPreview({ card }: { card: IdCardSource }) {
-  const ref = useRef<HTMLCanvasElement>(null);
-  useEffect(() => {
-    const target = ref.current;
-    if (!target) return;
-    const ctx = target.getContext('2d');
-    if (!ctx) return;
-    ctx.drawImage(renderCardCanvas(card), 0, 0);
-  }, [card]);
-  return <canvas ref={ref} width={CARD_PX_W} height={CARD_PX_H} className="idcard-canvas" />;
-}
-
 export default function IdCardPanel({ onClose, notify, onAddToWorkspace }: Props) {
   const [cards, setCards] = useState<IdCardSource[]>([]);
   const [opts, setOpts] = useState<IdCardOptions>(DEFAULT_OPTIONS);
@@ -52,7 +30,6 @@ export default function IdCardPanel({ onClose, notify, onAddToWorkspace }: Props
   const [viewMode, setViewMode] = useState<Record<string, 'result' | 'frame'>>({});
   const [angleDraft, setAngleDraft] = useState<Record<string, string>>({});
   const fileRef = useRef<HTMLInputElement>(null);
-  const dragRef = useRef<DragState | null>(null);
   const cardsRef = useRef<IdCardSource[]>([]);
 
   useEffect(() => { cardsRef.current = cards; }, [cards]);
@@ -246,24 +223,6 @@ export default function IdCardPanel({ onClose, notify, onAddToWorkspace }: Props
     finally { setBusy(false); setStatus(''); }
   }, [cards, busy, opts, notify, onAddToWorkspace, onClose]);
 
-  const onPointerDown = (e: ReactPointerEvent<HTMLDivElement>, card: IdCardSource) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    e.currentTarget.setPointerCapture(e.pointerId);
-    dragRef.current = {
-      id: card.id, x: e.clientX, y: e.clientY,
-      cropX: card.crop.x, cropY: card.crop.y, w: rect.width, h: rect.height,
-    };
-  };
-  const onPointerMove = (e: ReactPointerEvent<HTMLDivElement>) => {
-    const d = dragRef.current;
-    if (!d) return;
-    const c = cardsRef.current.find((v) => v.id === d.id);
-    if (!c) return;
-    const dx = (e.clientX - d.x) / d.w, dy = (e.clientY - d.y) / d.h;
-    updateCard(d.id, { crop: panCrop({ ...c.crop, x: d.cropX, y: d.cropY }, dx, dy) });
-  };
-  const onPointerUp = () => { dragRef.current = null; };
-
   const onDrop = (e: DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     setDragOver(false);
@@ -345,14 +304,8 @@ export default function IdCardPanel({ onClose, notify, onAddToWorkspace }: Props
                     <IdCardFrameEditor card={card}
                       onChange={(crop) => updateCard(card.id, { crop })} />
                   ) : (
-                    <div className="idcard-viewport"
-                      onPointerDown={(e) => onPointerDown(e, card)}
-                      onPointerMove={onPointerMove}
-                      onPointerUp={onPointerUp}
-                      onPointerCancel={onPointerUp}>
-                      <CardPreview card={card} />
-                      <span className="idcard-ratio">85.6 × 54 mm</span>
-                    </div>
+                    <IdCardResultView card={card}
+                      onCrop={(c) => updateCard(card.id, { crop: c })} />
                   )}
                   <div className="idcard-meta">
                     <div className="idcard-name" title={card.name}>{card.name}</div>

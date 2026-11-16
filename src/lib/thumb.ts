@@ -107,3 +107,19 @@ export const renderThumb = (
   pageIndex: number,
   rotation: number,
 ) => renderPageImage(docId, bytes, pageIndex, rotation, 190, 0.75);
+
+/** 1 pt = 25.4/72 mm */
+export const MM_PER_PT = 25.4 / 72;
+
+/** 取页面真实尺寸（含旋转后的朝向），单位 pt；公章尺寸需按真实 mm 约束 */
+export async function getPageNatural(
+  docId: string,
+  bytes: Uint8Array,
+  pageIndex: number,
+  rotation: number,
+): Promise<{ width: number; height: number }> {
+  const pdf = await getDocument(docId, bytes);
+  const page = await pdf.getPage(pageIndex + 1);
+  const v = page.getViewport({ scale: 1, rotation: (page.rotate + rotation + 360) % 360 });
+  return { width: v.width, height: v.height };
+}

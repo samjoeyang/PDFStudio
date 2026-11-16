@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
-import { renderPageImage } from '../lib/thumb';
+import { renderPageImage, getPageNatural, MM_PER_PT } from '../lib/thumb';
 import type { Annotation, AnnotationType, DocItem, InkStroke, PageItem } from '../lib/types';
+import { useZoomPan } from '../lib/useZoomPan';
+import ZoomControls from './ZoomControls';
 
 const uid = () => Math.random().toString(36).slice(2, 10);
 const COLORS = ['#eab308', '#ef4444', '#22c55e', '#3b82f6', '#8b5cf6'];
@@ -11,8 +13,10 @@ const TOOL_LABEL: Record<AnnotationType, string> = {
   highlight: '高亮', text: '文字', ink: '画笔', signature: '签名/盖章', mask: '遮挡',
 };
 
-/** 公章默认边长（相对页面宽度的归一化比例），约等于真实公章大小；可在编辑器内调 */
-const DEFAULT_SEAL_SIZE = 0.18;
+/** 公章尺寸固定约束在 40~45mm（真实物理尺寸），默认 42mm */
+const SEAL_MM_MIN = 40;
+const SEAL_MM_MAX = 45;
+const SEAL_MM_DEFAULT = 42;
 
 const annLabel = (a: Annotation): string => {
   if (a.type === 'signature') return a.stamp === 'seal' ? '公章' : '签名';
@@ -21,24 +25,25 @@ const annLabel = (a: Annotation): string => {
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
+interface Box { x: number; y: number; w: number; h: number }
+
 /** 由中心点 + 边长（归一化，相对页面宽）生成正方形框；按页面纵横比换算高度，确保视觉为正圆/正方 */
-const sealBox = (cx: number, cy: number, sideW: number, pageW: number, pageH: number): Box => {
+const sealBox = (cx: number, cy: number, sideW: number, aspect: number): Box => {
   const w = sideW;
-  const h = (sideW * pageW) / pageH;
+  const h = sideW * aspect;
   const x = clamp(cx - w / 2, 0, Math.max(0, 1 - w));
   const y = clamp(cy - h / 2, 0, Math.max(0, 1 - h));
   return { x, y, w, h };
 };
 
-/** 由拖拽起止点生成居中、锁正方形的框（边长取拖拽像素较大边） */
-const sealBoxFromDrag = (
-  s: { x: number; y: number }, p: { x: number; y: number }, pageW: number, pageH: number,
-): Box => {
-  const sidePx = Math.max(Math.abs(p.x - s.x) * pageW, Math.abs(p.y - s.y) * pageH);
-  return sealBox((s.x + p.x) / 2, (s.y + p.y) / 2, sidePx / pageW, pageW, pageH);
-};
+type Handle = 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w';
+const HANDLES: Handle[] = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
+const SEAL_HANDLES: Handle[] = ['nw', 'ne', 'se', 'sw'];
 
-interface Box { x: number; y: number; w: number; h: number }
+const handleCursor: Record<Handle, string> = {
+  nw: 'nwse-resize', n: 'ns-resize', ne: 'nesw-resize', e: 'ew-resize',
+  se: 'nwse-resize', s: 'ns-resize', sw: 'nesw-resize', w: 'ew-resize',
+};
 
 interface Props {
   page: PageItem;
@@ -48,6 +53,49 @@ interface Props {
   onSave: (anns: Annotation[]) => void;
   onClose: () => void;
 }
+
+/** 通用框体（非公章）按手柄拖拽改变大小；保持最小尺寸并夹在页面内 */
+const resizeBoxGeneric = (box: Box, handle: Handle, p: { x: number; y: number }, start: { x: number; y: number }): Box => {
+  const dx = p.x - start.x;
+  const dy = p.y - start.y;
+  let { x, y, w, h } = box;
+  if (handle.includes('w')) { x = box.x + dx; w = box.w - dx; }
+  if (handle.includes('e')) { w = box.w + dx; }
+  if (handle.includes('n')) { y = box.y + dy; h = box.h - dy; }
+  if (handle.includes('s')) { h = box.h + dy; }
+  if (w < 0) { x += w; w = -w; }
+  if (h < 0) { y += h; h = -h; }
+  const MIN = 0.02;
+  if (w < MIN) { if (handle.includes('w')) x = box.x + box.w - MIN; w = MIN; }
+  if (h < MIN) { if (handle.includes('n')) y = box.y + box.h - MIN; h = MIN; }
+  x = clamp(x, 0, Math.max(0, 1 - w));
+  y = clamp(y, 0, Math.max(0, 1 - h));
+  return { x, y, w, h };
+};
+
+/** 公章框体：锁正方形并按手柄从对角锚点缩放，尺寸夹在 40~45mm 对应归一化区间 */
+const resizeSeal = (
+  box: Box, handle: Handle, p: { x: number; y: number },
+  aspect: number, ratioMin: number, ratioMax: number,
+): Box => {
+  const hx = handle.includes('w') ? -1 : handle.includes('e') ? 1 : 0;
+  const hy = handle.includes('n') ? -1 : handle.includes('s') ? 1 : 0;
+  const cx = box.x + box.w / 2;
+  const cy = box.y + box.h / 2;
+  const anchorX = hx !== 0 ? cx - (hx * box.w) / 2 : cx;
+  const anchorY = hy !== 0 ? cy - (hy * box.h) / 2 : cy;
+  let w = box.w;
+  if (hx !== 0) w = 2 * Math.abs(p.x - anchorX);
+  w = clamp(w, ratioMin, ratioMax);
+  const h = w * aspect;
+  const x = hx < 0 ? anchorX : hx > 0 ? anchorX - w : box.x;
+  const y = hy < 0 ? anchorY : hy > 0 ? anchorY - h : box.y;
+  return {
+    x: clamp(x, 0, Math.max(0, 1 - w)),
+    y: clamp(y, 0, Math.max(0, 1 - h)),
+    w, h,
+  };
+};
 
 export default function AnnotationEditor({ page, doc, order, initial, onSave, onClose }: Props) {
   const [anns, setAnns] = useState<Annotation[]>(initial);
@@ -60,14 +108,29 @@ export default function AnnotationEditor({ page, doc, order, initial, onSave, on
   const [signature, setSignature] = useState('');
   const [showSignPad, setShowSignPad] = useState(false);
   const [stampMode, setStampMode] = useState<'signature' | 'seal'>('signature');
-  const [sealSize, setSealSize] = useState(DEFAULT_SEAL_SIZE);
+  const [sealMM, setSealMM] = useState(SEAL_MM_DEFAULT);
   const [pendingUpload, setPendingUpload] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [aspect, setAspect] = useState(1); // 页面宽/高（真实比例，非渲染缩放）
+  const [pageMM, setPageMM] = useState<{ w: number; h: number } | null>(null);
+  const [panMode, setPanMode] = useState(false); // 抓手模式：开启后拖拽空白处平移视口
+  const { vpRef, view, panning, fit, zoomIn, zoomOut, startPan } = useZoomPan(size);
   const stageRef = useRef<HTMLDivElement>(null);
   const signRef = useRef<HTMLCanvasElement>(null);
   const startRef = useRef<{ x: number; y: number } | null>(null);
   const strokesRef = useRef<InkStroke[]>([]);
   const drawingRef = useRef(false);
   const signDrawingRef = useRef(false);
+  const dragRef = useRef<{
+    id: string; mode: 'move' | 'resize'; handle?: Handle;
+    start: { x: number; y: number }; box: Box;
+  } | null>(null);
+
+  /** 真实页面尺寸（pt）→ 物理 mm，以及当前公章尺寸对应的归一化宽度区间 */
+  const pageWidthMM = pageMM ? pageMM.w * MM_PER_PT : 210;
+  const ratioMin = SEAL_MM_MIN / pageWidthMM;
+  const ratioMax = SEAL_MM_MAX / pageWidthMM;
+  const sealRatio = clamp(sealMM / pageWidthMM, ratioMin, ratioMax);
 
   useEffect(() => {
     let alive = true;
@@ -84,8 +147,23 @@ export default function AnnotationEditor({ page, doc, order, initial, onSave, on
         };
         probe.src = url;
       });
+    void getPageNatural(doc.id, doc.bytes, page.pageIndex, page.rotation)
+      .then(({ width, height }) => {
+        if (!alive) return;
+        setPageMM({ w: width, h: height });
+        setAspect(width / height);
+      });
     return () => { alive = false; };
   }, [doc, page.pageIndex, page.rotation]);
+
+  // 换页 / 图片就绪后自动适应视口并居中一次（不覆盖用户后续的手动缩放）
+  const fittedPage = useRef<string | null>(null);
+  useEffect(() => {
+    if (size.w && page.id !== fittedPage.current) {
+      fittedPage.current = page.id;
+      requestAnimationFrame(fit);
+    }
+  }, [size.w, size.h, page.id, fit]);
 
   useEffect(() => {
     if (!showSignPad) return;
@@ -98,6 +176,53 @@ export default function AnnotationEditor({ page, doc, order, initial, onSave, on
     }
   }, [showSignPad]);
 
+  // 选中框体的移动 / 缩放：用 window 监听，避免指针离开元素后丢失事件
+  useEffect(() => {
+    const normFromEvent = (e: PointerEvent) => {
+      const rect = stageRef.current!.getBoundingClientRect();
+      return {
+        x: clamp((e.clientX - rect.left) / rect.width, 0, 1),
+        y: clamp((e.clientY - rect.top) / rect.height, 0, 1),
+      };
+    };
+    const onMove = (e: PointerEvent) => {
+      const d = dragRef.current;
+      if (!d) return;
+      const p = normFromEvent(e);
+      setAnns((prev) => prev.map((a) => {
+        if (a.id !== d.id) return a;
+        if (d.mode === 'move') {
+          const x = clamp(d.box.x + (p.x - d.start.x), 0, Math.max(0, 1 - a.w));
+          const y = clamp(d.box.y + (p.y - d.start.y), 0, Math.max(0, 1 - a.h));
+          return { ...a, x, y };
+        }
+        if (a.type === 'signature' && a.stamp === 'seal') {
+          return { ...a, ...resizeSeal(a, d.handle!, p, aspect, ratioMin, ratioMax) };
+        }
+        return { ...a, ...resizeBoxGeneric(a, d.handle!, p, d.start) };
+      }));
+    };
+    const onUp = () => {
+      const d = dragRef.current;
+      dragRef.current = null;
+      if (!d) return;
+      // 同步公章尺寸滑块到当前实际 mm
+      setAnns((prev) => {
+        const a = prev.find((x) => x.id === d.id);
+        if (a && a.type === 'signature' && a.stamp === 'seal') {
+          setSealMM(clamp(Number((a.w * pageWidthMM).toFixed(1)), SEAL_MM_MIN, SEAL_MM_MAX));
+        }
+        return prev;
+      });
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    return () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+    };
+  }, [aspect, ratioMin, ratioMax, pageWidthMM]);
+
   const palette = tool === 'mask' ? MASK_COLORS : COLORS;
   const pickTool = (t: AnnotationType) => {
     setTool(t);
@@ -108,13 +233,22 @@ export default function AnnotationEditor({ page, doc, order, initial, onSave, on
   const norm = useCallback((e: ReactPointerEvent): { x: number; y: number } => {
     const rect = stageRef.current!.getBoundingClientRect();
     return {
-      x: Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width)),
-      y: Math.min(1, Math.max(0, (e.clientY - rect.top) / rect.height)),
+      x: clamp((e.clientX - rect.left) / rect.width, 0, 1),
+      y: clamp((e.clientY - rect.top) / rect.height, 0, 1),
     };
   }, []);
 
+  const addAnn = (a: Annotation) => {
+    setAnns((prev) => [...prev, a]);
+    setSelectedId(a.id);
+  };
+
   const onPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
     if (textDraft || showSignPad) return;
+    // 抓手模式或鼠标中键：拖拽平移视口而非绘制
+    if (panMode || e.button === 1) { startPan(e); return; }
+    // 在空白处开始绘制新批注：先取消现有选中
+    setSelectedId(null);
     const p = norm(e);
     startRef.current = p;
     e.currentTarget.setPointerCapture(e.pointerId);
@@ -136,9 +270,11 @@ export default function AnnotationEditor({ page, doc, order, initial, onSave, on
       return;
     }
     const s = startRef.current;
-    // 公章：锁定正方形（边长取拖拽像素较大边），不能自由变形
+    // 公章：拖拽时即按页面真实尺寸显示为固定 40~45mm（默认 42mm），只跟随位置、不随拖拽变形
     if (tool === 'signature' && stampMode === 'seal') {
-      setDraft(sealBoxFromDrag(s, p, size.w, size.h));
+      const cx = (s.x + p.x) / 2;
+      const cy = (s.y + p.y) / 2;
+      setDraft(sealBox(cx, cy, sealRatio, aspect));
       return;
     }
     setDraft({
@@ -150,14 +286,14 @@ export default function AnnotationEditor({ page, doc, order, initial, onSave, on
   const finish = (box: Box) => {
     const base = { id: uid(), pageId: page.id, color, ...box };
     if (tool === 'highlight') {
-      setAnns((prev) => [...prev, { ...base, type: 'highlight' }]);
+      addAnn({ ...base, type: 'highlight' });
     } else if (tool === 'text') {
       setTextDraft({ box, value: '' });
     } else if (tool === 'signature') {
       if (!signature) return;
-      setAnns((prev) => [...prev, { ...base, type: 'signature', image: signature, stamp: stampMode }]);
+      addAnn({ ...base, type: 'signature', image: signature, stamp: stampMode });
     } else if (tool === 'mask') {
-      setAnns((prev) => [...prev, { ...base, type: 'mask' }]);
+      addAnn({ ...base, type: 'mask' });
     }
   };
 
@@ -169,10 +305,10 @@ export default function AnnotationEditor({ page, doc, order, initial, onSave, on
       drawingRef.current = false;
       const strokes = strokesRef.current.filter((s) => s.points.length > 1);
       if (strokes.length) {
-        setAnns((prev) => [...prev, {
+        addAnn({
           id: uid(), pageId: page.id, type: 'ink', color,
           x: 0, y: 0, w: 1, h: 1, strokes,
-        }]);
+        });
       }
       strokesRef.current = [];
       setDraft(null);
@@ -183,14 +319,12 @@ export default function AnnotationEditor({ page, doc, order, initial, onSave, on
       x: Math.min(start.x, p.x), y: Math.min(start.y, p.y),
       w: Math.abs(p.x - start.x), h: Math.abs(p.y - start.y),
     };
-    // 公章：单击即拉出标准公章大小的正方形；拖拽则锁定正方形（可改尺寸，不能改形状）
+    // 公章：单击或拖拽都按固定 mm 尺寸放置（中心落在起止中点），不可自由变形
     if (tool === 'signature' && stampMode === 'seal') {
-      const isClick = box.w < 0.005 && box.h < 0.005;
-      const placed = isClick
-        ? sealBox(start.x, start.y, sealSize, size.w, size.h)
-        : sealBoxFromDrag(start, p, size.w, size.h);
+      const cx = (start.x + p.x) / 2;
+      const cy = (start.y + p.y) / 2;
       setDraft(null);
-      finish(placed);
+      finish(sealBox(cx, cy, sealRatio, aspect));
       return;
     }
     setDraft(null);
@@ -198,12 +332,29 @@ export default function AnnotationEditor({ page, doc, order, initial, onSave, on
     else if (tool === 'text') finish({ ...box, w: 0.3, h: 0.04 });
   };
 
+  /** 选中某个批注并开始移动 / 缩放；阻止冒泡以免在空白处误建新批注 */
+  const startDrag = (
+    e: ReactPointerEvent, id: string, mode: 'move' | 'resize', handle?: Handle,
+  ) => {
+    if (textDraft || showSignPad) return;
+    if (e.button !== 0) return; // 仅左键操作批注，中/右键让视口平移处理
+    e.stopPropagation();
+    const a = anns.find((x) => x.id === id);
+    if (!a) return;
+    setSelectedId(id);
+    if (a.type === 'signature' && a.stamp === 'seal') {
+      setSealMM(clamp(Number((a.w * pageWidthMM).toFixed(1)), SEAL_MM_MIN, SEAL_MM_MAX));
+    }
+    const p = norm(e);
+    dragRef.current = { id, mode, handle, start: p, box: { x: a.x, y: a.y, w: a.w, h: a.h } };
+  };
+
   const confirmText = () => {
     if (!textDraft || !textDraft.value.trim()) { setTextDraft(null); return; }
-    setAnns((prev) => [...prev, {
+    addAnn({
       id: uid(), pageId: page.id, type: 'text', color,
       ...textDraft.box, text: textDraft.value.trim(),
-    }]);
+    });
     setTextDraft(null);
   };
 
@@ -251,12 +402,28 @@ export default function AnnotationEditor({ page, doc, order, initial, onSave, on
     c.getContext('2d')!.clearRect(0, 0, c.width, c.height);
   };
 
+  /** 调整公章尺寸：同步滑块值，并对已选中的公章实时缩放（保持中心不动） */
+  const onSealMMChange = (v: number) => {
+    setSealMM(v);
+    if (!selectedId) return;
+    setAnns((prev) => prev.map((a) => {
+      if (a.id !== selectedId || !(a.type === 'signature' && a.stamp === 'seal')) return a;
+      const w = clamp(v / pageWidthMM, ratioMin, ratioMax);
+      const cx = a.x + a.w / 2;
+      const cy = a.y + a.h / 2;
+      return { ...a, ...sealBox(cx, cy, w, aspect) };
+    }));
+  };
+
   const uploadSignature = (file?: File) => {
     if (!file) return;
     const reader = new FileReader();
     reader.onload = () => setPendingUpload(String(reader.result));
     reader.readAsDataURL(file);
   };
+
+  const isSeal = (a: Annotation) => a.type === 'signature' && a.stamp === 'seal';
+  const activeHandles = (a: Annotation): Handle[] => (isSeal(a) ? SEAL_HANDLES : HANDLES);
 
   return (
     <div className="modal-backdrop">
@@ -286,6 +453,11 @@ export default function AnnotationEditor({ page, doc, order, initial, onSave, on
             {tool === 'mask' && <span className="muted small">遮挡颜色</span>}
           </div>
           <div className="btn-row">
+            <button className={`btn btn-small${panMode ? ' is-active' : ''}`}
+              onClick={() => setPanMode((p) => !p)}
+              title="开启后拖拽空白处可平移页面，放大后便于看清细节 / 精准定位">移动</button>
+          </div>
+          <div className="btn-row">
             <button className="btn btn-small" onClick={() => { setStampMode('signature'); setShowSignPad(true); }}>写签名</button>
             <label className="btn btn-small btn-file">
               上传签章
@@ -304,9 +476,9 @@ export default function AnnotationEditor({ page, doc, order, initial, onSave, on
               {stampMode === 'seal' && (
                 <span className="seal-size">
                   <span className="muted small">公章尺寸</span>
-                  <input type="range" min={0.08} max={0.5} step={0.01} value={sealSize}
-                    onChange={(e) => setSealSize(Number(e.target.value))} />
-                  <span className="muted small">{Math.round((sealSize / DEFAULT_SEAL_SIZE) * 100)}%</span>
+                  <input type="range" min={SEAL_MM_MIN} max={SEAL_MM_MAX} step={0.5} value={sealMM}
+                    onChange={(e) => onSealMMChange(Number(e.target.value))} />
+                  <span className="muted small">{sealMM} mm（固定 40~45）</span>
                 </span>
               )}
             </div>
@@ -314,34 +486,49 @@ export default function AnnotationEditor({ page, doc, order, initial, onSave, on
         </div>
 
         <div className="annot-body">
-          <div className="annot-scroll">
+          <div className="annot-scroll" ref={vpRef}>
             <div
               ref={stageRef}
-              className="annot-stage"
-              style={{ width: size.w, height: size.h }}
+              className={`annot-stage${panMode ? ' is-pan' : ''}${panning ? ' is-panning' : ''}`}
+              style={{
+                width: size.w, height: size.h,
+                transform: `translate(${view.pan.x}px, ${view.pan.y}px) scale(${view.zoom})`,
+                transformOrigin: '0 0',
+              }}
               onPointerDown={onPointerDown}
               onPointerMove={onPointerMove}
               onPointerUp={onPointerUp}
             >
               {img && <img src={img} alt="页面" draggable={false} />}
-              {anns.map((a) => (
-                a.type === 'ink' ? (
-                  <svg key={a.id} className="annot-ink" viewBox="0 0 1 1" preserveAspectRatio="none">
-                    {(a.strokes ?? []).map((s, i) => (
-                      <polyline key={i} points={s.points.map((p) => `${p.x},${p.y}`).join(' ')}
-                        fill="none" stroke={a.color} strokeWidth={0.004} strokeLinecap="round" />
-                    ))}
-                  </svg>
-                ) : (
+              {anns.map((a) => {
+                if (a.type === 'ink') {
+                  return (
+                    <svg key={a.id} className="annot-ink" viewBox="0 0 1 1" preserveAspectRatio="none">
+                      {(a.strokes ?? []).map((s, i) => (
+                        <polyline key={i} points={s.points.map((p) => `${p.x},${p.y}`).join(' ')}
+                          fill="none" stroke={a.color} strokeWidth={0.004} strokeLinecap="round" />
+                      ))}
+                    </svg>
+                  );
+                }
+                const selected = a.id === selectedId;
+                return (
                   <div key={a.id}
-                    className={`annot-item annot-${a.type}`}
-                    style={{ left: `${a.x * 100}%`, top: `${a.y * 100}%`, width: `${a.w * 100}%`, height: `${a.h * 100}%` }}>
+                    className={`annot-item annot-${a.type}${selected ? ' is-selected' : ''}`}
+                    style={{ left: `${a.x * 100}%`, top: `${a.y * 100}%`, width: `${a.w * 100}%`, height: `${a.h * 100}%` }}
+                    onPointerDown={(e) => startDrag(e, a.id, 'move')}>
                     {(a.type === 'highlight' || a.type === 'mask') && <span style={{ background: a.color }} />}
                     {a.type === 'text' && <span style={{ color: a.color }}>{a.text}</span>}
                     {a.type === 'signature' && a.image && <img src={a.image} alt="签名" />}
+                    {selected && activeHandles(a).map((hd) => (
+                      <span key={hd}
+                        className={`resize-handle rh-${hd}`}
+                        style={{ cursor: handleCursor[hd] }}
+                        onPointerDown={(e) => startDrag(e, a.id, 'resize', hd)} />
+                    ))}
                   </div>
-                )
-              ))}
+                );
+              })}
               {draft && (
                 <div className={`annot-draft${tool === 'mask' ? ' is-mask' : ''}`}
                   style={{
@@ -370,6 +557,7 @@ export default function AnnotationEditor({ page, doc, order, initial, onSave, on
                 </div>
               )}
             </div>
+            <ZoomControls zoom={view.zoom} onZoomIn={zoomIn} onZoomOut={zoomOut} onFit={fit} />
           </div>
 
           <div className="annot-side">
@@ -377,14 +565,16 @@ export default function AnnotationEditor({ page, doc, order, initial, onSave, on
             <div className="annot-list">
               {anns.length === 0 && <p className="muted">在左侧页面上拖拽以添加</p>}
               {anns.map((a) => (
-                <div className="annot-row" key={a.id}>
+                <div className={`annot-row${a.id === selectedId ? ' is-selected' : ''}`} key={a.id}
+                  onClick={() => setSelectedId(a.id)}>
                   <span className="badge">{annLabel(a)}</span>
                   <span className="annot-row-text">{a.text || (a.type === 'ink' ? '手绘笔迹' : a.type === 'signature' ? (a.stamp === 'seal' ? '公章图片' : '签名图片') : a.type === 'mask' ? '遮挡区域' : '高亮区域')}</span>
-                  <button onClick={() => setAnns((prev) => prev.filter((x) => x.id !== a.id))}>删除</button>
+                  <button onClick={(e) => { e.stopPropagation(); setAnns((prev) => prev.filter((x) => x.id !== a.id)); if (selectedId === a.id) setSelectedId(null); }}>删除</button>
                 </div>
               ))}
             </div>
             <p className="muted small">批注在导出时写回 PDF；带批注的页会转为高清图像，中文可正常显示。</p>
+            <p className="muted small">选中页面上的框体可拖动移动、拖角缩放；公章锁定 40~45mm 正方形。</p>
             <p className="muted small">「遮挡」是不透明实色块；导出时该页底层文字会被一并抹除，复制 / 搜索都不会再出现被遮内容。</p>
           </div>
         </div>

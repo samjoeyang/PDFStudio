@@ -11,6 +11,7 @@ import { DEFAULT_WATERMARK } from './lib/watermark';
 import type { WatermarkSettings } from './lib/watermark';
 import type { Annotation, DocItem, PageItem } from './lib/types';
 import PageCard from './components/PageCard';
+import PageLightbox from './components/PageLightbox';
 import AnnotationEditor from './components/AnnotationEditor';
 import OcrPanel from './components/OcrPanel';
 import IdCardPanel from './components/IdCardPanel';
@@ -43,6 +44,7 @@ export default function App() {
   const [editorPageId, setEditorPageId] = useState<string | null>(null);
   const [ocrPanel, setOcrPanel] = useState<OcrPanelState | null>(null);
   const [idCardOpen, setIdCardOpen] = useState(false);
+  const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const [watermark, setWatermark] = useState<WatermarkSettings>(DEFAULT_WATERMARK);
   const [watermarkOpen, setWatermarkOpen] = useState(false);
 
@@ -309,6 +311,23 @@ export default function App() {
     finally { setBusy(false); }
   }, [buildBase, notify]);
 
+  const exportRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!exportMenuOpen) return;
+    const onDown = (e: PointerEvent) => {
+      if (exportRef.current && !exportRef.current.contains(e.target as Node)) {
+        setExportMenuOpen(false);
+      }
+    };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setExportMenuOpen(false); };
+    window.addEventListener('pointerdown', onDown);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('pointerdown', onDown);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [exportMenuOpen]);
+
   const openOcr = useCallback(async () => {
     const scope = selected.size ? 'selected' : 'all';
     setBusy(true);
@@ -336,6 +355,11 @@ export default function App() {
   const editorDoc = editorPage ? docMap.get(editorPage.docId) : undefined;
   const editorOrder = editorPage ? pages.findIndex((p) => p.id === editorPage.id) : -1;
 
+  const [quickViewId, setQuickViewId] = useState<string | null>(null);
+  const quickViewPage = quickViewId ? pages.find((p) => p.id === quickViewId) : undefined;
+  const quickViewDoc = quickViewPage ? docMap.get(quickViewPage.docId) : undefined;
+  const quickViewOrder = quickViewPage ? pages.findIndex((p) => p.id === quickViewPage.id) : -1;
+
   return (
     <div className="app">
       <header className="topbar">
@@ -358,8 +382,31 @@ export default function App() {
           </button>
           <button className="btn" onClick={() => void openOcr()} disabled={busy || !pages.length}>文字 / OCR</button>
           <span className="divider" />
-          <button className="btn" onClick={() => void doExport('selected')} disabled={busy || !selected.size}>导出选中</button>
-          <button className="btn btn-primary" onClick={() => void doExport('all')} disabled={busy || !pages.length}>导出全部</button>
+          <div className="dropdown" ref={exportRef}>
+            <button
+              className="btn btn-primary"
+              onClick={() => setExportMenuOpen((o) => !o)}
+              disabled={busy || !pages.length}
+              aria-haspopup="true"
+              aria-expanded={exportMenuOpen}
+            >导出 ▾</button>
+            {exportMenuOpen && (
+              <div className="dropdown-menu" role="menu">
+                <button
+                  className="dropdown-item"
+                  role="menuitem"
+                  disabled={!pages.length}
+                  onClick={() => { setExportMenuOpen(false); void doExport('all'); }}
+                >导出全部{pages.length ? `（${pages.length} 页）` : ''}</button>
+                <button
+                  className="dropdown-item"
+                  role="menuitem"
+                  disabled={!selected.size}
+                  onClick={() => { setExportMenuOpen(false); void doExport('selected'); }}
+                >导出选中{selected.size ? `（${selected.size} 页）` : ''}</button>
+              </div>
+            )}
+          </div>
         </div>
         <input ref={pdfInput} type="file" accept=".pdf,application/pdf" multiple hidden
           onChange={(e) => { void handlePdfFiles(Array.from(e.target.files ?? [])); e.target.value = ''; }} />
@@ -423,6 +470,7 @@ export default function App() {
                     onDragStart={onCardDragStart}
                     onDrop={onCardDrop}
                     onOpenEditor={setEditorPageId}
+                    onQuickView={setQuickViewId}
                   />
                 );
               })}
@@ -535,6 +583,15 @@ export default function App() {
           preview={watermarkPreview}
           selectedCount={selected.size}
           onClose={() => setWatermarkOpen(false)}
+        />
+      )}
+      {quickViewPage && quickViewDoc && (
+        <PageLightbox
+          page={quickViewPage}
+          doc={quickViewDoc}
+          order={quickViewOrder}
+          onClose={() => setQuickViewId(null)}
+          onOpenEditor={(id) => { setQuickViewId(null); setEditorPageId(id); }}
         />
       )}
     </div>

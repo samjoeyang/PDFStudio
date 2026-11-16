@@ -34,6 +34,18 @@ button { font-family: inherit; }
 .brand-sub { font-size: 11px; color: #8a93a0; margin-top: 2px; }
 .toolbar { display: flex; align-items: center; gap: 8px; margin-left: auto; }
 .divider { width: 1px; height: 22px; background: #e5e7eb; margin: 0 4px; }
+.dropdown { position: relative; display: inline-flex; }
+.dropdown-menu {
+  position: absolute; top: calc(100% + 6px); right: 0; z-index: 50;
+  min-width: 168px; background: #fff; border: 1px solid #e5e7eb; border-radius: 9px;
+  box-shadow: 0 10px 30px rgba(31, 41, 55, .16); padding: 6px; overflow: hidden;
+}
+.dropdown-item {
+  display: block; width: 100%; text-align: left; border: none; background: none;
+  padding: 9px 12px; border-radius: 6px; font-size: 13px; color: #1f2937; cursor: pointer;
+}
+.dropdown-item:hover:not(:disabled) { background: #f1f5ff; }
+.dropdown-item:disabled { color: #b6bdc7; cursor: not-allowed; }
 
 .btn {
   height: 32px; padding: 0 14px;
@@ -160,6 +172,15 @@ button { font-family: inherit; }
   border-radius: 5px; background: rgba(31, 41, 55, .72); color: #fff;
   font-size: 11px; display: flex; align-items: center; justify-content: center;
 }
+.page-quickview {
+  position: absolute; top: 10px; right: 10px; z-index: 3;
+  border: 1px solid #dfe3e8; background: rgba(255, 255, 255, .92); color: #4b5563;
+  font-size: 11px; line-height: 1; padding: 4px 9px; border-radius: 6px; cursor: pointer;
+  box-shadow: 0 1px 4px rgba(31, 41, 55, .12); opacity: 0; transition: opacity .12s;
+}
+.page-card:hover .page-quickview { opacity: 1; }
+.page-quickview:hover { border-color: #93b4f7; color: #1d4ed8; background: #fff; }
+.page-quickview:active { transform: translateY(1px); }
 .page-preview {
   height: 176px; border: 1px solid #eef0f3; border-radius: 6px;
   background: #fff; overflow: hidden;
@@ -294,17 +315,34 @@ button { font-family: inherit; }
 .sig-ready { font-size: 11px; color: #15803d; }
 .annot-body { display: flex; min-height: 0; flex: 1; }
 .annot-scroll {
-  flex: 1; overflow: auto; background: #f0f2f5;
-  padding: 20px; display: flex; justify-content: center; align-items: flex-start;
+  flex: 1; position: relative; overflow: hidden; background: #f0f2f5;
+  touch-action: none;
 }
 .annot-stage {
   position: relative; flex: 0 0 auto;
   background: #fff; box-shadow: 0 3px 18px rgba(31, 41, 55, .12);
   cursor: crosshair; touch-action: none;
 }
+.annot-stage.is-pan { cursor: grab; }
+.annot-stage.is-panning { cursor: grabbing; }
 .annot-stage > img { width: 100%; height: 100%; display: block; }
-.annot-item { position: absolute; pointer-events: none; }
-.annot-item > span, .annot-item > img { display: block; width: 100%; height: 100%; }
+.annot-item { position: absolute; pointer-events: auto; cursor: move; touch-action: none; }
+.annot-item > span:not(.resize-handle), .annot-item > img { display: block; width: 100%; height: 100%; pointer-events: none; }
+.annot-item.is-selected { outline: 2px solid #2563eb; outline-offset: 0; }
+/* 选中框体的缩放手柄 */
+.resize-handle {
+  position: absolute; width: 12px; height: 12px; background: #fff;
+  border: 2px solid #2563eb; border-radius: 3px; z-index: 6;
+  touch-action: none; box-shadow: 0 1px 3px rgba(31,41,55,.25);
+}
+.rh-nw { left: -7px; top: -7px; }
+.rh-n  { left: 50%; top: -7px; margin-left: -6px; }
+.rh-ne { right: -7px; top: -7px; }
+.rh-e  { right: -7px; top: 50%; margin-top: -6px; }
+.rh-se { right: -7px; bottom: -7px; }
+.rh-s  { left: 50%; bottom: -7px; margin-left: -6px; }
+.rh-sw { left: -7px; bottom: -7px; }
+.rh-w  { left: -7px; top: 50%; margin-top: -6px; }
 .annot-highlight > span { opacity: .32; }
 /* 遮挡块在编辑器里加一圈淡蓝描边，纯白遮挡也能看清范围；导出时只画实色 */
 .annot-mask > span { box-shadow: 0 0 0 1px rgba(37, 99, 235, .55); }
@@ -333,6 +371,7 @@ button { font-family: inherit; }
   display: flex; align-items: center; gap: 6px;
   padding: 8px 0; border-bottom: 1px solid #f0f2f5; font-size: 11.5px;
 }
+.annot-row.is-selected { background: #eef4ff; border-radius: 6px; padding-left: 6px; padding-right: 6px; }
 .annot-row-text { flex: 1; color: #4b5563; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .annot-row button { border: none; background: none; color: #b42318; font-size: 11px; cursor: pointer; }
 .signpad-wrap {
@@ -420,12 +459,18 @@ button { font-family: inherit; }
   overflow: hidden; background: #fff; cursor: grab; touch-action: none;
 }
 .idcard-viewport:active { cursor: grabbing; }
+.idcard-viewport.pan-on { cursor: grab; }
+.idcard-viewport.panning { cursor: grabbing; }
+.idcard-stage {
+  position: absolute; top: 0; left: 0;
+  transform-origin: 0 0;
+}
 .idcard-canvas {
   position: absolute; inset: 0; width: 100%; height: 100%;
   display: block; user-select: none; -webkit-user-drag: none;
 }
 .idcard-ratio {
-  position: absolute; right: 6px; bottom: 6px;
+  position: absolute; left: 6px; bottom: 6px; z-index: 4;
   background: rgba(24, 31, 44, .62); color: #fff;
   font-size: 10px; padding: 2px 6px; border-radius: 4px; pointer-events: none;
 }
@@ -456,6 +501,9 @@ button { font-family: inherit; }
 .idcard-frame-stage { position: relative; width: 100%; height: 300px; overflow: hidden;
   background: #eef1f5; border: 1px solid #dfe3e8; border-radius: 6px;
   cursor: crosshair; touch-action: none; }
+.idcard-frame-stage.pan-on { cursor: grab; }
+.idcard-frame-stage.panning { cursor: grabbing; }
+.idcard-frame-inner { position: absolute; top: 0; left: 0; transform-origin: 0 0; }
 .idcard-frame-photo { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 .idcard-frame { position: absolute; border: 2px solid #2563eb;
   box-shadow: 0 0 0 9999px rgba(15, 23, 42, .48); cursor: move; }
@@ -539,17 +587,73 @@ button { font-family: inherit; }
 .wm-kinds { margin: 4px 0 14px; }
 .wm-preview-wrap { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .wm-preview {
-  flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center;
-  background: #f0f2f5; border-radius: 9px; padding: 14px; overflow: auto;
+  flex: 1; min-height: 0; position: relative; overflow: hidden;
+  background: #f0f2f5; border-radius: 9px;
 }
 .wm-preview canvas {
-  max-width: 100%; max-height: 56vh; background: #fff;
-  box-shadow: 0 3px 18px rgba(31, 41, 55, .16);
+  position: absolute; top: 0; left: 0; background: #fff;
+  box-shadow: 0 3px 18px rgba(31, 41, 55, .16); transform-origin: 0 0;
 }
 .wm-note { line-height: 1.6; margin: 10px 2px 0; }
+
+/* 缩放 / 平移浮层控件（批注编辑器与水印预览通用） */
+.idcard-pan-toggle {
+  position: absolute; top: 6px; left: 6px; z-index: 6;
+  border: 1px solid #dfe3e8; background: rgba(255, 255, 255, .92); color: #4b5563;
+  font-size: 11px; line-height: 1; padding: 4px 9px; border-radius: 6px; cursor: pointer;
+  box-shadow: 0 1px 4px rgba(31, 41, 55, .12);
+}
+.idcard-pan-toggle:hover { border-color: #93b4f7; color: #1d4ed8; }
+.idcard-pan-toggle.is-on {
+  background: #2563eb; border-color: #2563eb; color: #fff;
+}
+.idcard-pan-toggle.is-on:hover { background: #1d4ed8; border-color: #1d4ed8; }
+.zoom-controls {
+  position: absolute; right: 12px; bottom: 12px; z-index: 12;
+  display: flex; align-items: center; gap: 2px;
+  background: rgba(255, 255, 255, .94); border: 1px solid #e3e7ec;
+  border-radius: 10px; padding: 3px; box-shadow: 0 4px 14px rgba(31, 41, 55, .14);
+  user-select: none;
+}
+.zoom-controls .zoom-btn,
+.zoom-controls .zoom-fit {
+  border: none; background: none; cursor: pointer; color: #374151;
+  border-radius: 7px; padding: 0; line-height: 1;
+}
+.zoom-controls .zoom-btn { width: 28px; height: 28px; font-size: 17px; }
+.zoom-controls .zoom-btn:hover:not(:disabled) { background: #f1f5fb; }
+.zoom-controls .zoom-btn:disabled { color: #c4cad3; cursor: not-allowed; }
+.zoom-controls .zoom-level {
+  min-width: 50px; height: 28px; border: none; background: none; cursor: pointer;
+  color: #374151; font-size: 12px; font-weight: 500; border-radius: 7px;
+}
+.zoom-controls .zoom-level:hover { background: #f1f5fb; }
+.zoom-controls .zoom-fit {
+  height: 28px; padding: 0 9px; font-size: 12px;
+  border-left: 1px solid #eef0f3; margin-left: 2px;
+}
+.zoom-controls .zoom-fit:hover { background: #f1f5fb; }
+
+/* 首页单页大图预览（灯箱） */
+.modal-lightbox { width: min(1000px, 96vw); height: calc(100vh - 48px); }
+.modal-head-actions { display: flex; align-items: center; gap: 8px; }
+.lb-viewport {
+  position: relative; flex: 1; min-height: 0; overflow: hidden;
+  background: #eef1f5; touch-action: none; cursor: grab;
+  border-radius: 0 0 14px 14px;
+}
+.lb-viewport.is-panning { cursor: grabbing; }
+.lb-img {
+  position: absolute; top: 0; left: 0;
+  transform-origin: 0 0; user-select: none; -webkit-user-drag: none;
+  box-shadow: 0 3px 18px rgba(31, 41, 55, .16);
+}
+.lb-viewport .page-loading {
+  position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+}
+
 @media (max-width: 780px) {
   .wm-body { flex-direction: column; overflow-y: auto; }
   .wm-form { width: 100%; flex: 0 0 auto; }
-  .wm-preview canvas { max-height: 40vh; }
 }
 

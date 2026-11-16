@@ -13,11 +13,12 @@ interface Props {
   onDragStart: (e: DragEvent, id: string) => void;
   onDrop: (e: DragEvent, id: string) => void;
   onOpenEditor: (id: string) => void;
+  onQuickView?: (id: string) => void;
 }
 
 export default function PageCard({
   page, doc, order, selected, annotationCount,
-  onSelect, onDragStart, onDrop, onOpenEditor,
+  onSelect, onDragStart, onDrop, onOpenEditor, onQuickView,
 }: Props) {
   const [thumb, setThumb] = useState('');
 
@@ -43,6 +44,16 @@ export default function PageCard({
     >
       <span className="page-order">{order + 1}</span>
       {annotationCount > 0 && <span className="page-annot-count">{annotationCount} 条批注</span>}
+      {onQuickView && (
+        <button
+          type="button"
+          className="page-quickview"
+          title="放大查看（滚轮缩放，拖动平移）"
+          draggable={false}
+          onMouseDown={(e) => e.stopPropagation()}
+          onClick={(e) => { e.stopPropagation(); onQuickView(page.id); }}
+        >查看</button>
+      )}
       <div className="page-preview">
         {thumb
           ? <img src={thumb} alt={`第 ${order + 1} 页`} draggable={false} />
